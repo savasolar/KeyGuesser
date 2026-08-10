@@ -113,6 +113,7 @@ target_sources(PPD PRIVATE
     Source/core.h
 	Source/PluginLogger.cpp
 	Source/PluginLogger.h
+	Source/dr_wav.h
 )
 
 set_source_files_properties(Source/core.c PROPERTIES LANGUAGE C)
@@ -120,7 +121,7 @@ set_source_files_properties(Source/core.c PROPERTIES LANGUAGE C)
 # Binary data
 juce_add_binary_data(BinaryResources SOURCES
 	${CMAKE_CURRENT_SOURCE_DIR}/Resources/resources_clean.json
-	
+	${CMAKE_CURRENT_SOURCE_DIR}/Resources/test2.wav
 )
 
 # Additional Libraries
