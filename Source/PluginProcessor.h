@@ -2,13 +2,6 @@
 
 #include <JuceHeader.h>
 #include "core.h"
-#include <map>
-#include <vector>
-#include <string>
-#include <thread>
-#include <atomic>
-
-
 
 class PPDAudioProcessor  : public juce::AudioProcessor
 {

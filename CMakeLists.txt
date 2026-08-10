@@ -119,7 +119,7 @@ set_source_files_properties(Source/core.c PROPERTIES LANGUAGE C)
 
 # Binary data
 juce_add_binary_data(BinaryResources SOURCES
-	${CMAKE_CURRENT_SOURCE_DIR}/Resources/dummy.txt
+	${CMAKE_CURRENT_SOURCE_DIR}/Resources/resources_clean.json
 	
 )
 
