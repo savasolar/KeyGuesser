@@ -24,13 +24,15 @@
 #define EOS_ID               1
 #define BOS_ID               1393
 #define NUM_TOKENS           1394
+
 #define SHIFT_BASE           3
-#define PITCH_BASE           1005
-#define VEL_BASE             1133
-#define TIE_ID               1135
-#define PROGRAM_BASE         1136
+#define PITCH_BASE           1004
+#define VEL_BASE             1132
+#define TIE_ID               1134
+#define PROGRAM_BASE         1135
 #define NUM_PROGRAMS         130
-#define DRUM_BASE            1266
+#define DRUM_BASE            1265
+
 #define NUM_DRUMS            128
 #define MINIMUM_NOTE_DUR     0.01f
 #define MAX_OPEN_NOTES       256
