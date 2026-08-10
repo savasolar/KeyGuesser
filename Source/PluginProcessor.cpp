@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "core.h"
 
 PPDAudioProcessor::PPDAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -13,6 +14,7 @@ PPDAudioProcessor::PPDAudioProcessor()
                        )
 #endif
 {
+    run_ppd_transcription();
 }
 
 PPDAudioProcessor::~PPDAudioProcessor()
