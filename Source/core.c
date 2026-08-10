@@ -739,7 +739,7 @@ void run_ppd_transcription(void)
 
     OrtSessionOptions* opts = NULL;
     check_status(g_ort->CreateSessionOptions(&opts), "opts");
-    g_ort->SetIntraOpNumThreads(opts, 1);
+    g_ort->SetIntraOpNumThreads(opts, /*1*/0);
     g_ort->SetSessionGraphOptimizationLevel(opts, ORT_ENABLE_BASIC);
 
 #ifdef _WIN32
