@@ -4,8 +4,8 @@
 PPDAudioProcessorEditor::PPDAudioProcessorEditor (PPDAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
-    addAndMakeVisible(testButton);
-    testButton.addListener(this);
+//    addAndMakeVisible(testButton);
+//    testButton.addListener(this);
     setSize (400, 300);
 }
 
@@ -20,11 +20,11 @@ void PPDAudioProcessorEditor::paint (juce::Graphics& g)
 
 void PPDAudioProcessorEditor::buttonClicked(juce::Button* button)
 {
-    if (button == &testButton)
-        audioProcessor.runTestTranscription();
+//    if (button == &testButton)
+//        audioProcessor.runTestTranscription();
 }
 
 void PPDAudioProcessorEditor::resized()
 {
-    testButton.setBounds(getLocalBounds().withSizeKeepingCentre(120, 40));
+//    testButton.setBounds(getLocalBounds().withSizeKeepingCentre(120, 40));
 }

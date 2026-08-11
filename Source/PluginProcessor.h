@@ -32,9 +32,24 @@ public:
 
     void runTestTranscription();
 
+    void runContextTranscription();   // live ring-buffer of the last contextLengthSeconds
+
 private:
 
     int contextLengthSeconds = 2;
+
+    double currentSampleRate = 44100.0;
+    juce::AudioBuffer<float> contextBuffer;
+    int writePosition = 0;
+    int contextSamples = 0;
+
+    int samplesSinceLast = 0;
+
+    std::atomic<bool> isTranscribing{ false };
+
+    /** Shared path used by both the BinaryData test and the live context buffer.
+     *  Interleaves the (planar) AudioBuffer and calls ppd_run_test_buffer. */
+    void transcribeAudioBuffer(const juce::AudioBuffer<float>& buffer, double sampleRate);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PPDAudioProcessor)
 };

@@ -1,4 +1,4 @@
-#include "PluginProcessor.h"
+﻿#include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "core.h"
 #include "BinaryData.h"
@@ -88,7 +88,12 @@ void PPDAudioProcessor::changeProgramName (int index, const juce::String& newNam
 
 void PPDAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    currentSampleRate = sampleRate;
+    contextSamples = (int)(contextLengthSeconds * sampleRate + 0.5);
 
+    const int numCh = juce::jmax(1, getTotalNumInputChannels());
+    contextBuffer.setSize(numCh, contextSamples, false, true, true); // clear, avoid realloc
+    writePosition = 0;
 }
 
 void PPDAudioProcessor::releaseResources()
@@ -118,19 +123,52 @@ bool PPDAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) cons
 }
 #endif
 
-void PPDAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void PPDAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
-    auto totalNumInputChannels  = getTotalNumInputChannels();
+    auto totalNumInputChannels = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
-        buffer.clear (i, 0, buffer.getNumSamples());
+        buffer.clear(i, 0, buffer.getNumSamples());
 
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
+    if (contextSamples <= 0 || contextBuffer.getNumSamples() != contextSamples)
+        return;
+
+    const int numSamples = buffer.getNumSamples();
+    const int numCh = juce::jmin(totalNumInputChannels, contextBuffer.getNumChannels());
+
+    // 1. Write live audio into the ring buffer
+    for (int ch = 0; ch < numCh; ++ch)
     {
-        auto* channelData = buffer.getWritePointer (channel);
+        const float* src = buffer.getReadPointer(ch);
+        float* dest = contextBuffer.getWritePointer(ch);
+        int          pos = writePosition;
 
+        for (int i = 0; i < numSamples; ++i)
+        {
+            dest[pos] = src[i];
+            if (++pos >= contextSamples)
+                pos = 0;
+        }
+    }
+    writePosition = (writePosition + numSamples) % contextSamples;
+
+    // 2. Count samples. When a full contextLengthSeconds has arrived, fire.
+    samplesSinceLast += numSamples;
+    if (samplesSinceLast >= contextSamples)
+    {
+        samplesSinceLast -= contextSamples;   // keep residual for accuracy
+
+        // Never block the audio thread. Launch once, skip if already running.
+        if (!isTranscribing.exchange(true))
+        {
+            juce::Thread::launch([this]
+                {
+                    runContextTranscription();
+                    isTranscribing = false;
+                });
+        }
     }
 }
 
@@ -154,10 +192,31 @@ void PPDAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 
 }
 
+void PPDAudioProcessor::transcribeAudioBuffer(const juce::AudioBuffer<float>& buffer, double sampleRate)
+{
+    const int numChannels = buffer.getNumChannels();
+    const int numSamples = buffer.getNumSamples();
+
+    std::vector<float> interleaved((size_t)numChannels * (size_t)numSamples);
+    for (int ch = 0; ch < numChannels; ++ch)
+    {
+        const float* src = buffer.getReadPointer(ch);
+        for (int i = 0; i < numSamples; ++i)
+            interleaved[(size_t)i * (size_t)numChannels + (size_t)ch] = src[i];
+    }
+
+    C_FloatArray audio;
+    audio.data = interleaved.data();
+    audio.num_samples = (int64_t)numSamples;
+    audio.num_channels = numChannels;
+    audio.sample_rate = (int)sampleRate;
+
+    ppd_run_test_buffer(&audio);
+}
+
 void PPDAudioProcessor::runTestTranscription()
 {
-    // 1) Load test2.wav from BinaryData into a juce::AudioBuffer<float>
-    //    (reuses JUCE's own WAV reader no re-implementation needed).
+    // 1) Load test2.wav from BinaryData (unchanged)
     juce::AudioFormatManager formatManager;
     formatManager.registerBasicFormats();
 
@@ -173,30 +232,40 @@ void PPDAudioProcessor::runTestTranscription()
         return;
     }
 
-    juce::AudioBuffer<float> fileBuffer((int)reader->numChannels, (int)reader->lengthInSamples);
+    juce::AudioBuffer<float> fileBuffer((int)reader->numChannels,
+        (int)reader->lengthInSamples);
     reader->read(&fileBuffer, 0, (int)reader->lengthInSamples, 0, true, true);
 
-    // 2) Populate a C_FloatArray (interleaved, as core.c expects) from the AudioBuffer<float>
-    const int numChannels = fileBuffer.getNumChannels();
-    const int numSamples = fileBuffer.getNumSamples();
+    // 2) Re-use the exact same interleave + core path
+    transcribeAudioBuffer(fileBuffer, reader->sampleRate);
+}
 
-    std::vector<float> interleaved((size_t)numChannels * (size_t)numSamples);
-    for (int ch = 0; ch < numChannels; ++ch)
+void PPDAudioProcessor::runContextTranscription()
+{
+    if (contextSamples <= 0 || contextBuffer.getNumSamples() != contextSamples)
     {
-        auto* src = fileBuffer.getReadPointer(ch);
-        for (int i = 0; i < numSamples; ++i)
-            interleaved[(size_t)i * (size_t)numChannels + (size_t)ch] = src[i];
+        DBG("runContextTranscription: context buffer not ready");
+        return;
     }
 
-    C_FloatArray audio;
-    audio.data = interleaved.data();
-    audio.num_samples = (int64_t)numSamples;
-    audio.num_channels = numChannels;
-    audio.sample_rate = (int)reader->sampleRate;
+    // Linearise the circular buffer (oldest → newest)
+    juce::AudioBuffer<float> linear(contextBuffer.getNumChannels(), contextSamples);
+    const int numCh = contextBuffer.getNumChannels();
 
-    // 3) Process the C_FloatArray in core.c, identical downmix/resample/inference
-    //    pipeline that used to run on the file loaded from disk.
-    ppd_run_test_buffer(&audio);
+    for (int ch = 0; ch < numCh; ++ch)
+    {
+        const float* src = contextBuffer.getReadPointer(ch);
+        float* dest = linear.getWritePointer(ch);
+
+        const int first = contextSamples - writePosition;
+        if (first > 0)
+            juce::FloatVectorOperations::copy(dest, src + writePosition, first);
+        if (writePosition > 0)
+            juce::FloatVectorOperations::copy(dest + first, src, writePosition);
+    }
+
+    // Same interleave + core path used by the test file
+    transcribeAudioBuffer(linear, currentSampleRate);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
