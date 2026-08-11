@@ -8,7 +8,7 @@ extern "C" {
 
 	/** Plain-C container for raw audio handed in from the host (e.g. JUCE).
 	 *  `data` is interleaved (num_channels samples per frame) and is owned
-	 *  by the CALLER — core.c only reads from it. */
+	 *  by the CALLER, core.c only reads from it. */
 	typedef struct {
 		float* data;          /* interleaved samples, length = num_samples * num_channels */
 		int64_t num_samples;   /* number of frames (per channel), NOT the raw array length */

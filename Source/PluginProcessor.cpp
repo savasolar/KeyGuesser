@@ -157,7 +157,7 @@ void PPDAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 void PPDAudioProcessor::runTestTranscription()
 {
     // 1) Load test2.wav from BinaryData into a juce::AudioBuffer<float>
-    //    (reuses JUCE's own WAV reader — no re-implementation needed).
+    //    (reuses JUCE's own WAV reader no re-implementation needed).
     juce::AudioFormatManager formatManager;
     formatManager.registerBasicFormats();
 
@@ -194,7 +194,7 @@ void PPDAudioProcessor::runTestTranscription()
     audio.num_channels = numChannels;
     audio.sample_rate = (int)reader->sampleRate;
 
-    // 3) Process the C_FloatArray in core.c — identical downmix/resample/inference
+    // 3) Process the C_FloatArray in core.c, identical downmix/resample/inference
     //    pipeline that used to run on the file loaded from disk.
     ppd_run_test_buffer(&audio);
 }

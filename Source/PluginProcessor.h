@@ -34,5 +34,7 @@ public:
 
 private:
 
+    int contextLengthSeconds = 2;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PPDAudioProcessor)
 };
