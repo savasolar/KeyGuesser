@@ -14,11 +14,14 @@ PPDAudioProcessor::PPDAudioProcessor()
                        )
 #endif
 {
-    run_ppd_transcription();
+//    run_ppd_transcription();
+    ppd_load_models();
+
 }
 
 PPDAudioProcessor::~PPDAudioProcessor()
 {
+    ppd_shutdown();
 }
 
 const juce::String PPDAudioProcessor::getName() const
@@ -147,6 +150,11 @@ void PPDAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 void PPDAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
 
+}
+
+void PPDAudioProcessor::runTestTranscription()
+{
+    ppd_run_test();
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

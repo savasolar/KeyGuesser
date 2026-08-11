@@ -724,9 +724,22 @@ static float* load_wav_mono_16k(const char* path, int64_t* out_n_samples)
 /* ------------------------------------------------------------------ */
 /* Public entry point                                                 */
 /* ------------------------------------------------------------------ */
-void run_ppd_transcription(void)
+
+/* ------------------------------------------------------------------ */
+/* Persistent ONNX state                                              */
+/* ------------------------------------------------------------------ */
+static OrtEnv* g_env = NULL;
+static OrtSession* g_sess_prefill = NULL;
+static OrtSession* g_sess_step = NULL;
+
+void ppd_load_models(void)
 {
-    plugin_log("=== PPD transcription start ===");
+    if (g_sess_prefill && g_sess_step) {
+        plugin_log("Models already loaded");
+        return;
+    }
+
+    plugin_log("=== Loading models ===");
 
     g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
     if (!g_ort) {
@@ -734,16 +747,14 @@ void run_ppd_transcription(void)
         return;
     }
 
-    OrtEnv* env = NULL;
-    check_status(g_ort->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "PPD", &env), "env");
+    check_status(g_ort->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "PPD", &g_env), "env");
 
     OrtSessionOptions* opts = NULL;
     check_status(g_ort->CreateSessionOptions(&opts), "opts");
-    g_ort->SetIntraOpNumThreads(opts, /*1*/0);
+    g_ort->SetIntraOpNumThreads(opts, 0);               // all physical cores
     g_ort->SetSessionGraphOptimizationLevel(opts, ORT_ENABLE_BASIC);
 
 #ifdef _WIN32
-    /* ONNX Runtime on Windows requires wchar_t paths */
     const wchar_t* prefill_path = L"C:\\Users\\savas\\Documents\\PPD\\models\\prefill.onnx";
     const wchar_t* step_path = L"C:\\Users\\savas\\Documents\\PPD\\models\\step.onnx";
 #else
@@ -751,77 +762,31 @@ void run_ppd_transcription(void)
     const char* step_path = "C:/Users/savas/Documents/PPD/models/step.onnx";
 #endif
 
-    OrtSession* sess_prefill = NULL;
-    OrtSession* sess_step = NULL;
-    check_status(g_ort->CreateSession(env, prefill_path, opts, &sess_prefill), "prefill session");
-    check_status(g_ort->CreateSession(env, step_path, opts, &sess_step), "step session");
+    check_status(g_ort->CreateSession(g_env, prefill_path, opts, &g_sess_prefill), "prefill session");
+    check_status(g_ort->CreateSession(g_env, step_path, opts, &g_sess_step), "step session");
     g_ort->ReleaseSessionOptions(opts);
 
-    plugin_log("Models loaded");
+    plugin_log("Models loaded successfully");
+}
 
-    size_t prefill_out_count = 0;
-    g_ort->SessionGetOutputCount(sess_prefill, &prefill_out_count);
-    plugin_log("prefill model has %zu outputs", prefill_out_count);
-
-    size_t step_out_count = 0;
-    g_ort->SessionGetOutputCount(sess_step, &step_out_count);
-    plugin_log("step model has %zu outputs", step_out_count);
-
-    size_t prefill_in_count = 0;
-    g_ort->SessionGetInputCount(sess_prefill, &prefill_in_count);
-    plugin_log("prefill has %zu inputs", prefill_in_count);
-
-    OrtAllocator* allocator = NULL;
-    g_ort->GetAllocatorWithDefaultOptions(&allocator);
-
-    for (size_t i = 0; i < prefill_in_count; ++i) {
-        char* name = NULL;
-        g_ort->SessionGetInputName(sess_prefill, i, allocator, &name);
-        plugin_log("  prefill input[%zu] = \"%s\"", i, name ? name : "(null)");
-        if (name) g_ort->AllocatorFree(allocator, name);
+void ppd_run_test(void)
+{
+    if (!g_sess_prefill || !g_sess_step) {
+        plugin_log("Models not loaded – call ppd_load_models() first");
+        return;
     }
 
-    plugin_log("prefill output names:");
-    for (size_t i = 0; i < prefill_out_count; ++i) {
-        char* name = NULL;
-        g_ort->SessionGetOutputName(sess_prefill, i, allocator, &name);
-        plugin_log("  prefill output[%zu] = \"%s\"", i, name ? name : "(null)");
-        if (name) g_ort->AllocatorFree(allocator, name);
-    }
-
-    // ---- STEP 2: step model introspection ----
-    size_t step_in_count = 0;
-    g_ort->SessionGetInputCount(sess_step, &step_in_count);
-    plugin_log("step has %zu inputs", step_in_count);
-
-    for (size_t i = 0; i < step_in_count; ++i) {
-        char* name = NULL;
-        g_ort->SessionGetInputName(sess_step, i, allocator, &name);
-        plugin_log("  step input[%zu] = \"%s\"", i, name ? name : "(null)");
-        if (name) g_ort->AllocatorFree(allocator, name);
-    }
-
-    plugin_log("step output names:");
-    for (size_t i = 0; i < step_out_count; ++i) {
-        char* name = NULL;
-        g_ort->SessionGetOutputName(sess_step, i, allocator, &name);
-        plugin_log("  step output[%zu] = \"%s\"", i, name ? name : "(null)");
-        if (name) g_ort->AllocatorFree(allocator, name);
-    }
-    // ---- end STEP 2 ----
+    plugin_log("=== PPD transcription start ===");
 
     int64_t n_samples = 0;
     float* wav = load_wav_mono_16k(WAV_PATH, &n_samples);
     if (!wav) {
-        g_ort->ReleaseSession(sess_prefill);
-        g_ort->ReleaseSession(sess_step);
-        g_ort->ReleaseEnv(env);
+        plugin_log("Failed to load test wav");
         return;
     }
     plugin_log("Audio loaded: %lld samples @ 16 kHz", (long long)n_samples);
 
     int num_chunks = (int)((n_samples + SEGMENT_SAMPLES - 1) / SEGMENT_SAMPLES);
-
     plugin_log("About to enter chunk loop (num_chunks = %d)", num_chunks);
 
     OpenNoteTracker tracker;
@@ -851,7 +816,6 @@ void run_ppd_transcription(void)
         tracker_feed_boundary(&tracker, seek, next_seek, acts, &n_acts);
         collector_apply(&collector, acts, n_acts);
 
-        /* forced prefix from currently open notes */
         int forced[512];
         int n_forced = 0;
         if (i > 0) {
@@ -869,17 +833,9 @@ void run_ppd_transcription(void)
         }
 
         int n_tok = 0;
-        onnx_generate_chunk(sess_prefill, sess_step, chunk,
+        onnx_generate_chunk(g_sess_prefill, g_sess_step, chunk,
             forced, n_forced, tokens_buf, &n_tok);
         plugin_log("chunk %d: %d tokens (%d forced)", i, n_tok, n_forced);
-        {
-            char buf[4096];
-            int pos = 0;
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "tokens: ");
-            for (int t = 0; t < n_tok && pos < (int)sizeof(buf) - 16; ++t)
-                pos += snprintf(buf + pos, sizeof(buf) - pos, "%d ", tokens_buf[t]);
-            plugin_log("%s", buf);
-        }
 
         for (int t = 0; t < n_tok; ++t) {
             n_acts = 0;
@@ -890,7 +846,6 @@ void run_ppd_transcription(void)
         free(chunk);
     }
 
-    /* finish */
     {
         int n_acts = 0;
         tracker_finish(&tracker, acts, &n_acts);
@@ -898,9 +853,6 @@ void run_ppd_transcription(void)
     }
 
     free(wav);
-    g_ort->ReleaseSession(sess_prefill);
-    g_ort->ReleaseSession(sess_step);
-    g_ort->ReleaseEnv(env);
 
     /* sort notes by start time */
     for (int i = 0; i < collector.n_notes; ++i)
@@ -911,7 +863,6 @@ void run_ppd_transcription(void)
                 collector.notes[j] = tmp;
             }
 
-    /* emit JSON via plugin_log */
     char* json = (char*)malloc(MAX_JSON);
     int pos = 0;
     pos += snprintf(json + pos, MAX_JSON - pos, "[\n");
@@ -928,4 +879,12 @@ void run_ppd_transcription(void)
     free(json);
 
     plugin_log("=== PPD transcription done ===");
+}
+
+void ppd_shutdown(void)
+{
+    if (g_sess_prefill) { g_ort->ReleaseSession(g_sess_prefill); g_sess_prefill = NULL; }
+    if (g_sess_step) { g_ort->ReleaseSession(g_sess_step);    g_sess_step = NULL; }
+    if (g_env) { g_ort->ReleaseEnv(g_env);              g_env = NULL; }
+    plugin_log("PPD shutdown");
 }
