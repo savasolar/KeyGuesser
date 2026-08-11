@@ -1,6 +1,8 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "core.h"
+#include "BinaryData.h"
+#include <vector>
 
 PPDAudioProcessor::PPDAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -154,7 +156,47 @@ void PPDAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 
 void PPDAudioProcessor::runTestTranscription()
 {
-    ppd_run_test();
+    // 1) Load test2.wav from BinaryData into a juce::AudioBuffer<float>
+    //    (reuses JUCE's own WAV reader — no re-implementation needed).
+    juce::AudioFormatManager formatManager;
+    formatManager.registerBasicFormats();
+
+    auto inputStream = std::make_unique<juce::MemoryInputStream>(
+        BinaryData::test2_wav, (size_t)BinaryData::test2_wavSize, false);
+
+    std::unique_ptr<juce::AudioFormatReader> reader(
+        formatManager.createReaderFor(std::move(inputStream)));
+
+    if (reader == nullptr)
+    {
+        DBG("runTestTranscription: failed to create reader for embedded test2.wav");
+        return;
+    }
+
+    juce::AudioBuffer<float> fileBuffer((int)reader->numChannels, (int)reader->lengthInSamples);
+    reader->read(&fileBuffer, 0, (int)reader->lengthInSamples, 0, true, true);
+
+    // 2) Populate a C_FloatArray (interleaved, as core.c expects) from the AudioBuffer<float>
+    const int numChannels = fileBuffer.getNumChannels();
+    const int numSamples = fileBuffer.getNumSamples();
+
+    std::vector<float> interleaved((size_t)numChannels * (size_t)numSamples);
+    for (int ch = 0; ch < numChannels; ++ch)
+    {
+        auto* src = fileBuffer.getReadPointer(ch);
+        for (int i = 0; i < numSamples; ++i)
+            interleaved[(size_t)i * (size_t)numChannels + (size_t)ch] = src[i];
+    }
+
+    C_FloatArray audio;
+    audio.data = interleaved.data();
+    audio.num_samples = (int64_t)numSamples;
+    audio.num_channels = numChannels;
+    audio.sample_rate = (int)reader->sampleRate;
+
+    // 3) Process the C_FloatArray in core.c — identical downmix/resample/inference
+    //    pipeline that used to run on the file loaded from disk.
+    ppd_run_test_buffer(&audio);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

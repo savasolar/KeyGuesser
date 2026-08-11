@@ -669,42 +669,38 @@ static void onnx_generate_chunk(
 /* ------------------------------------------------------------------ */
 /* Audio load (dr_wav + optional libsamplerate)                       */
 /* ------------------------------------------------------------------ */
-static float* load_wav_mono_16k(const char* path, int64_t* out_n_samples)
+/* Downmix an interleaved multi-channel buffer to mono and resample it to
+ * SAMPLE_RATE if needed. `interleaved` is NOT freed and NOT modified — it is
+ * owned by the caller. Returns a newly malloc'd mono float buffer (caller
+ * must free it), or NULL on failure. This is the exact downmix/resample
+ * logic that used to live inline in load_wav_mono_16k(); it is now shared
+ * so callers that already have raw PCM in memory (e.g. audio decoded from
+ * BinaryData) go through the identical postprocessing path as file loads. */
+static float* downmix_and_resample(const float* interleaved, int64_t n_frames,
+    unsigned channels, unsigned sample_rate, int64_t* out_n_samples)
 {
-    drwav wav;
-    if (!drwav_init_file(&wav, path, NULL)) {
-        plugin_log("Failed to open wav: %s", path);
-        return NULL;
-    }
-
-    size_t total = (size_t)wav.totalPCMFrameCount * wav.channels;
-    float* interleaved = (float*)malloc(total * sizeof(float));
-    drwav_read_pcm_frames_f32(&wav, wav.totalPCMFrameCount, interleaved);
-    drwav_uninit(&wav);
-
     /* downmix */
-    float* mono = (float*)malloc(wav.totalPCMFrameCount * sizeof(float));
-    for (drwav_uint64 i = 0; i < wav.totalPCMFrameCount; ++i) {
+    float* mono = (float*)malloc((size_t)n_frames * sizeof(float));
+    for (int64_t i = 0; i < n_frames; ++i) {
         float s = 0.0f;
-        for (unsigned c = 0; c < wav.channels; ++c)
-            s += interleaved[i * wav.channels + c];
-        mono[i] = s / (float)wav.channels;
+        for (unsigned c = 0; c < channels; ++c)
+            s += interleaved[i * channels + c];
+        mono[i] = s / (float)channels;
     }
-    free(interleaved);
 
-    if (wav.sampleRate == SAMPLE_RATE) {
-        *out_n_samples = (int64_t)wav.totalPCMFrameCount;
+    if (sample_rate == SAMPLE_RATE) {
+        *out_n_samples = n_frames;
         return mono;
     }
 
     /* resample */
-    double ratio = (double)SAMPLE_RATE / (double)wav.sampleRate;
-    int64_t out_len = (int64_t)(wav.totalPCMFrameCount * ratio) + 16;
+    double ratio = (double)SAMPLE_RATE / (double)sample_rate;
+    int64_t out_len = (int64_t)(n_frames * ratio) + 16;
     float* resampled = (float*)malloc((size_t)out_len * sizeof(float));
 
     SRC_DATA src;
     src.data_in = mono;
-    src.input_frames = (long)wav.totalPCMFrameCount;
+    src.input_frames = (long)n_frames;
     src.data_out = resampled;
     src.output_frames = (long)out_len;
     src.src_ratio = ratio;
@@ -719,6 +715,26 @@ static float* load_wav_mono_16k(const char* path, int64_t* out_n_samples)
     }
     *out_n_samples = src.output_frames_gen;
     return resampled;
+}
+
+static float* load_wav_mono_16k(const char* path, int64_t* out_n_samples)
+{
+    drwav wav;
+    if (!drwav_init_file(&wav, path, NULL)) {
+        plugin_log("Failed to open wav: %s", path);
+        return NULL;
+    }
+
+    size_t total = (size_t)wav.totalPCMFrameCount * wav.channels;
+    float* interleaved = (float*)malloc(total * sizeof(float));
+    drwav_read_pcm_frames_f32(&wav, wav.totalPCMFrameCount, interleaved);
+
+    float* out = downmix_and_resample(interleaved, (int64_t)wav.totalPCMFrameCount,
+        wav.channels, wav.sampleRate, out_n_samples);
+
+    free(interleaved);
+    drwav_uninit(&wav);
+    return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -769,21 +785,14 @@ void ppd_load_models(void)
     plugin_log("Models loaded successfully");
 }
 
-void ppd_run_test(void)
+/* Runs the chunked ONNX inference + note-tracking + JSON logging over a
+ * mono 16 kHz buffer. `wav` is NOT freed here — the caller owns it and is
+ * responsible for freeing it after this returns. Shared by both the
+ * file-based (ppd_run_test) and buffer-based (ppd_run_test_buffer) entry
+ * points so the two paths stay byte-for-byte identical downstream of the
+ * mono/16k conversion. */
+static void run_transcription_pipeline(const float* wav, int64_t n_samples)
 {
-    if (!g_sess_prefill || !g_sess_step) {
-        plugin_log("Models not loaded – call ppd_load_models() first");
-        return;
-    }
-
-    plugin_log("=== PPD transcription start ===");
-
-    int64_t n_samples = 0;
-    float* wav = load_wav_mono_16k(WAV_PATH, &n_samples);
-    if (!wav) {
-        plugin_log("Failed to load test wav");
-        return;
-    }
     plugin_log("Audio loaded: %lld samples @ 16 kHz", (long long)n_samples);
 
     int num_chunks = (int)((n_samples + SEGMENT_SAMPLES - 1) / SEGMENT_SAMPLES);
@@ -852,8 +861,6 @@ void ppd_run_test(void)
         collector_apply(&collector, acts, n_acts);
     }
 
-    free(wav);
-
     /* sort notes by start time */
     for (int i = 0; i < collector.n_notes; ++i)
         for (int j = i + 1; j < collector.n_notes; ++j)
@@ -877,6 +884,31 @@ void ppd_run_test(void)
 
     plugin_log("=== %d notes ===\n%s", collector.n_notes, json);
     free(json);
+}
+
+void ppd_run_test_buffer(const C_FloatArray* audio)
+{
+    if (!g_sess_prefill || !g_sess_step) {
+        plugin_log("Models not loaded – call ppd_load_models() first");
+        return;
+    }
+    if (!audio || !audio->data || audio->num_samples <= 0 || audio->num_channels <= 0) {
+        plugin_log("ppd_run_test_buffer: invalid input buffer");
+        return;
+    }
+
+    plugin_log("=== PPD transcription start (buffer) ===");
+
+    int64_t n_samples = 0;
+    float* wav = downmix_and_resample(audio->data, audio->num_samples,
+        (unsigned)audio->num_channels, (unsigned)audio->sample_rate, &n_samples);
+    if (!wav) {
+        plugin_log("Failed to process input audio buffer");
+        return;
+    }
+
+    run_transcription_pipeline(wav, n_samples);
+    free(wav);
 
     plugin_log("=== PPD transcription done ===");
 }
