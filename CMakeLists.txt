@@ -127,13 +127,13 @@ juce_add_binary_data(BinaryResources SOURCES
 # Additional Libraries
 
 # ONNX
-set(ONNXRUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/onnxruntime-win-x64-1.25.0-static-release")
+set(ONNXRUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/onnxruntime-win-x64-1.25.0-static-debug")
 target_include_directories(PPD PRIVATE ${ONNXRUNTIME_DIR}/include)
 target_link_libraries(PPD PRIVATE ${ONNXRUNTIME_DIR}/lib/onnxruntime.lib)
 
 # SRC
 target_include_directories(PPD PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/libsamplerate/include")
-target_link_libraries(PPD PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/libsamplerate/build/src/Release/samplerate.lib")
+target_link_libraries(PPD PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/libsamplerate/build/src/Debug/samplerate.lib")
     
 
 # Link everything
