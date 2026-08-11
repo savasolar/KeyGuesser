@@ -3,7 +3,7 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 
-class PPDAudioProcessorEditor : public juce::AudioProcessorEditor
+class PPDAudioProcessorEditor : public juce::AudioProcessorEditor, public juce::Timer
 {
 public:
     PPDAudioProcessorEditor(PPDAudioProcessor&);
@@ -78,6 +78,8 @@ private:
     };
 
     PPDAudioProcessor& audioProcessor;
+
+    void timerCallback() override;
 
     juce::Label keyTitleLabel;
     juce::Label keyLabel;

@@ -32,11 +32,9 @@ public:
 
     void runTestTranscription();
 
-    void runContextTranscription();   // live ring-buffer of the last contextLengthSeconds
-
 private:
 
-    int contextLengthSeconds = 2;
+    int contextLengthSeconds = 1;
 
     double currentSampleRate = 44100.0;
     juce::AudioBuffer<float> contextBuffer;

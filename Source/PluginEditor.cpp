@@ -10,7 +10,7 @@ PPDAudioProcessorEditor::PPDAudioProcessorEditor(PPDAudioProcessor& p)
     keyTitleLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(keyTitleLabel);
 
-    keyLabel.setText("C major", juce::dontSendNotification);
+    keyLabel.setText("--", juce::dontSendNotification);
     keyLabel.setFont(juce::Font("Arial", 32.0f, juce::Font::bold));
     addAndMakeVisible(keyLabel);
 
@@ -18,9 +18,9 @@ PPDAudioProcessorEditor::PPDAudioProcessorEditor(PPDAudioProcessor& p)
     detectedNotesTitleLabel.setFont(juce::Font("Arial", 14.0f, juce::Font::plain));
     addAndMakeVisible(detectedNotesTitleLabel);
 
-    detectedNotesLabel.setText("C10  C#10  D10", juce::dontSendNotification);
+    detectedNotesLabel.setText("--", juce::dontSendNotification);
     detectedNotesLabel.setFont(juce::Font("Arial", 14.0f, juce::Font::bold));
-    addAndMakeVisible(detectedNotesLabel);  // make it multiline
+    addAndMakeVisible(detectedNotesLabel);
 
     contextLengthTitleLabel.setText("CONTEXT LENGTH:", juce::dontSendNotification);
     contextLengthTitleLabel.setFont(juce::Font("Arial", 14.0f, juce::Font::plain));
@@ -35,6 +35,8 @@ PPDAudioProcessorEditor::PPDAudioProcessorEditor(PPDAudioProcessor& p)
     addAndMakeVisible(secondsSlider);
 
     setSize(280, 280);
+
+    startTimerHz(25);
 }
 
 PPDAudioProcessorEditor::~PPDAudioProcessorEditor()
@@ -55,4 +57,9 @@ void PPDAudioProcessorEditor::resized()
     detectedNotesLabel.setBounds(15, 125, 240, 50);
     contextLengthTitleLabel.setBounds(15, 190, 240, 20);
     secondsSlider.setBounds(20, 215, 80, 40);
+}
+
+void PPDAudioProcessorEditor::timerCallback()
+{
+
 }

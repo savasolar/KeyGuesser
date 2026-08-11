@@ -23,6 +23,11 @@ PPDAudioProcessor::PPDAudioProcessor()
 
 PPDAudioProcessor::~PPDAudioProcessor()
 {
+    // Block until the background LambdaThread has finished.
+    // (prevents the leaked LambdaThread assertion and use-after-free)
+    while (isTranscribing.load(std::memory_order_acquire))
+        juce::Thread::sleep(5);
+
     ppd_shutdown();
 }
 
@@ -163,10 +168,28 @@ void PPDAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
         // Never block the audio thread. Launch once, skip if already running.
         if (!isTranscribing.exchange(true))
         {
-            juce::Thread::launch([this]
+            // --- snapshot on the audio thread (no race) ---
+            juce::AudioBuffer<float> snapshot(contextBuffer.getNumChannels(), contextSamples);
+            const int numCh = contextBuffer.getNumChannels();
+
+            for (int ch = 0; ch < numCh; ++ch)
+            {
+                const float* src = contextBuffer.getReadPointer(ch);
+                float* dest = snapshot.getWritePointer(ch);
+
+                const int first = contextSamples - writePosition;
+                if (first > 0)
+                    juce::FloatVectorOperations::copy(dest, src + writePosition, first);
+                if (writePosition > 0)
+                    juce::FloatVectorOperations::copy(dest + first, src, writePosition);
+            }
+
+            const double sr = currentSampleRate;   // capture by value
+
+            juce::Thread::launch([this, snapshot = std::move(snapshot), sr]
                 {
-                    runContextTranscription();
-                    isTranscribing = false;
+                    transcribeAudioBuffer(snapshot, sr);
+                    isTranscribing.store(false, std::memory_order_release);
                 });
         }
     }
@@ -238,34 +261,6 @@ void PPDAudioProcessor::runTestTranscription()
 
     // 2) Re-use the exact same interleave + core path
     transcribeAudioBuffer(fileBuffer, reader->sampleRate);
-}
-
-void PPDAudioProcessor::runContextTranscription()
-{
-    if (contextSamples <= 0 || contextBuffer.getNumSamples() != contextSamples)
-    {
-        DBG("runContextTranscription: context buffer not ready");
-        return;
-    }
-
-    // Linearise the circular buffer (oldest → newest)
-    juce::AudioBuffer<float> linear(contextBuffer.getNumChannels(), contextSamples);
-    const int numCh = contextBuffer.getNumChannels();
-
-    for (int ch = 0; ch < numCh; ++ch)
-    {
-        const float* src = contextBuffer.getReadPointer(ch);
-        float* dest = linear.getWritePointer(ch);
-
-        const int first = contextSamples - writePosition;
-        if (first > 0)
-            juce::FloatVectorOperations::copy(dest, src + writePosition, first);
-        if (writePosition > 0)
-            juce::FloatVectorOperations::copy(dest + first, src, writePosition);
-    }
-
-    // Same interleave + core path used by the test file
-    transcribeAudioBuffer(linear, currentSampleRate);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
