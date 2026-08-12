@@ -34,7 +34,7 @@ public:
 
 private:
 
-    int contextLengthSeconds = 1;
+    int contextLengthSeconds = 5;
 
     double currentSampleRate = 44100.0;
     juce::AudioBuffer<float> contextBuffer;

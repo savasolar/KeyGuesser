@@ -535,12 +535,12 @@ static void onnx_generate_chunk(
         const char* step_in_names[2 + NUM_KV];
         step_in_names[0] = "token";
         step_in_names[1] = "position";
+        char kbuf[LAYERS][16], vbuf[LAYERS][16];
         for (int i = 0; i < LAYERS; ++i) {
-            static char bufk[16], bufv[16];
-            snprintf(bufk, sizeof(bufk), "k%d", i);
-            snprintf(bufv, sizeof(bufv), "v%d", i);
-            step_in_names[2 + i] = bufk;
-            step_in_names[2 + LAYERS + i] = bufv;
+            snprintf(kbuf[i], sizeof(kbuf[i]), "k%d", i);
+            snprintf(vbuf[i], sizeof(vbuf[i]), "v%d", i);
+            step_in_names[2 + i] = kbuf[i];
+            step_in_names[2 + LAYERS + i] = vbuf[i];
         }
         /* NOTE: the actual names must match the exported model.
            The Python reference uses exactly k0..k13 / v0..v13. */
@@ -551,9 +551,18 @@ static void onnx_generate_chunk(
         for (int i = 0; i < NUM_KV; ++i) step_ins[2 + i] = past[i];
 
         OrtValue* step_outs[1 + NUM_KV] = { 0 };
+
+        const char* step_out_names[1 + NUM_KV] = {
+            "logits",
+            "new_k0","new_k1","new_k2","new_k3","new_k4","new_k5","new_k6","new_k7",
+            "new_k8","new_k9","new_k10","new_k11","new_k12","new_k13",
+            "new_v0","new_v1","new_v2","new_v3","new_v4","new_v5","new_v6","new_v7",
+            "new_v8","new_v9","new_v10","new_v11","new_v12","new_v13"
+        };
+
         check_status(g_ort->Run(sess_step, NULL,
             step_in_names, step_ins, 2 + NUM_KV,
-            NULL, 1 + NUM_KV, step_outs), "step run");
+            step_out_names, 1 + NUM_KV, step_outs), "step run");
 
         g_ort->ReleaseValue(tok_val);
         g_ort->ReleaseValue(pos_val);
@@ -567,6 +576,12 @@ static void onnx_generate_chunk(
     }
 
     /* free generation */
+    ///* Hard limit, short contexts almost never need more than ~120 tokens.
+    //   Without this the model rarely emits EOS and runs to MAX_GEN_LEN. */
+    //const int max_tokens_this_chunk = 120;
+
+    //for (int gen = 0; gen < max_tokens_this_chunk; ++gen) {
+
     for (int gen = 0; gen < MAX_GEN_LEN - n_forced; ++gen) {
         /* logits shape is typically [1, seq, vocab] – take last position */
         OrtTensorTypeAndShapeInfo* linfo = NULL;
@@ -605,6 +620,20 @@ static void onnx_generate_chunk(
         if (next_id == EOS_ID) break;
 
         out_tokens[(*n_out_tokens)++] = next_id;
+
+
+
+        /* If the model just jumped past the end of the 5 s window,
+   every later note would be ignored by the tracker anyway.
+   Stop so we don’t waste decoder steps. */
+        if (next_id >= SHIFT_BASE && next_id < PITCH_BASE) {
+            int frames = next_id - SHIFT_BASE;
+            if (frames > 520)          // 5.2 seconds
+                break;
+        }
+
+
+
 
         /* step with next_id */
         int64_t tok_data[1] = { next_id };
@@ -767,7 +796,8 @@ void ppd_load_models(void)
 
     OrtSessionOptions* opts = NULL;
     check_status(g_ort->CreateSessionOptions(&opts), "opts");
-    g_ort->SetIntraOpNumThreads(opts, 0);               // all physical cores
+    g_ort->SetIntraOpNumThreads(opts, 1);
+    g_ort->SetInterOpNumThreads(opts, 1);
     g_ort->SetSessionGraphOptimizationLevel(opts, ORT_ENABLE_BASIC);
 
 #ifdef _WIN32
@@ -818,8 +848,27 @@ static void run_transcription_pipeline(const float* wav, int64_t n_samples)
         if (n > SEGMENT_SAMPLES) n = SEGMENT_SAMPLES;
         memcpy(chunk, wav + start, (size_t)n * sizeof(float));
 
+        ///* Hold the last sample instead of zero-padding.
+        //   Zero-padding makes the model see silence and frequently output 0 notes. */
+        //if (n > 0 && n < SEGMENT_SAMPLES) {
+        //    float last = chunk[n - 1];
+        //    for (int64_t j = n; j < SEGMENT_SAMPLES; ++j)
+        //        chunk[j] = last;
+        //}
+
+        /* Zero-pad the remainder (matches the Python reference).
+           Hold-last turns short events into long sustained tones and causes
+           the model to emit hundreds of repeated note events. */
+        if (n < SEGMENT_SAMPLES) {
+            memset(chunk + n, 0, (size_t)(SEGMENT_SAMPLES - n) * sizeof(float));
+        }
+
+
+
+
+
         float seek = (float)i * 5.0f;
-        float next_seek = (i + 1 < num_chunks) ? (float)(i + 1) * 5.0f : -1.0f;
+        float next_seek = (i + 1 < num_chunks) ? (float)(i + 1) * 5.0f : (float)n_samples / (float)SAMPLE_RATE;
 
         int n_acts = 0;
         tracker_feed_boundary(&tracker, seek, next_seek, acts, &n_acts);
@@ -870,20 +919,34 @@ static void run_transcription_pipeline(const float* wav, int64_t n_samples)
                 collector.notes[j] = tmp;
             }
 
-    char* json = (char*)malloc(MAX_JSON);
-    int pos = 0;
-    pos += snprintf(json + pos, MAX_JSON - pos, "[\n");
+    plugin_log("=== %d notes ===", collector.n_notes);
     for (int i = 0; i < collector.n_notes; ++i) {
         CollectedNote* n = &collector.notes[i];
-        pos += snprintf(json + pos, MAX_JSON - pos,
-            "  {\"pitch\": %d, \"instrument\": \"program_%d\", \"start\": %.3f, \"end\": %.3f}%s\n",
-            n->pitch, n->program, n->start, n->end,
-            (i + 1 < collector.n_notes) ? "," : "");
+        plugin_log("  [%d] pitch=%d  program=%d  start=%.3f  end=%.3f",
+            i, n->pitch, n->program, n->start, n->end);
     }
-    pos += snprintf(json + pos, MAX_JSON - pos, "]\n");
 
-    plugin_log("=== %d notes ===\n%s", collector.n_notes, json);
-    free(json);
+    ///* Collect every pitch token that appeared, ignore everything else */
+    //int seen[128] = { 0 };          /* MIDI note 0-127 */
+    //int pitches[128];
+    //int n_pitches = 0;
+
+    //for (int i = 0; i < collector.n_notes; ++i) {
+    //    int p = collector.notes[i].pitch;
+    //    if (p >= 0 && p < 128 && !seen[p]) {
+    //        seen[p] = 1;
+    //        pitches[n_pitches++] = p;
+    //    }
+    //}
+
+    ///* Also scan the raw token buffer of the last chunk in case the collector stayed empty */
+    ///* (simple extra safety – not perfect across all chunks but good enough for now) */
+
+    //plugin_log("=== %d unique pitches ===", n_pitches);
+    //for (int i = 0; i < n_pitches; ++i)
+    //    plugin_log("  %d", pitches[i]);
+
+
 }
 
 void ppd_run_test_buffer(const C_FloatArray* audio)
