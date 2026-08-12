@@ -32,6 +32,12 @@ public:
 
     void runTestTranscription();
 
+    /** Thread-safe accessor for the UI: returns a copy of the unique MIDI
+     *  pitches from the most recent NON-EMPTY transcription. Safe to call
+     *  from the message thread while transcribeAudioBuffer() updates
+     *  detectedNotes on a background thread. */
+    std::vector<int> getDetectedNotes() const;
+
 private:
 
     int contextLengthSeconds = 5;
@@ -44,6 +50,12 @@ private:
     int samplesSinceLast = 0;
 
     std::atomic<bool> isTranscribing{ false };
+
+    // Guards detectedNotes, which is written on the background transcription
+    // thread (see transcribeAudioBuffer) and read on the message thread
+    // (see getDetectedNotes, called from PluginEditor's timer).
+    mutable juce::CriticalSection detectedNotesLock;
+    std::vector<int> detectedNotes;
 
     /** Shared path used by both the BinaryData test and the live context buffer.
      *  Interleaves the (planar) AudioBuffer and calls ppd_run_test_buffer. */

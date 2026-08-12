@@ -575,124 +575,6 @@ static void onnx_generate_chunk(
         position += 1;
     }
 
-   // /* free generation */
-   // ///* Hard limit, short contexts almost never need more than ~120 tokens.
-   // //   Without this the model rarely emits EOS and runs to MAX_GEN_LEN. */
-   // //const int max_tokens_this_chunk = 120;
-
-   // //for (int gen = 0; gen < max_tokens_this_chunk; ++gen) {
-
-   // for (int gen = 0; gen < MAX_GEN_LEN - n_forced; ++gen) {
-   //     /* logits shape is typically [1, seq, vocab] – take last position */
-   //     OrtTensorTypeAndShapeInfo* linfo = NULL;
-   //     check_status(g_ort->GetTensorTypeAndShape(prefill_outs[0], &linfo), "lshape");
-   //     size_t ldims_cnt = 0;
-   //     g_ort->GetDimensionsCount(linfo, &ldims_cnt);
-   //     int64_t ldims[4];
-   //     g_ort->GetDimensions(linfo, ldims, ldims_cnt);
-   //     g_ort->ReleaseTensorTypeAndShapeInfo(linfo);
-
-   //     int64_t seq = (ldims_cnt >= 2) ? ldims[ldims_cnt - 2] : 1;
-   //     int64_t vocab = ldims[ldims_cnt - 1];
-   //     float* last = logits_data + (seq - 1) * vocab;
-
-   //     // Copy last row exactly like Python (do NOT mutate ORT buffer)
-   //     float* step_logits = (float*)malloc((size_t)vocab * sizeof(float));
-   //     memcpy(step_logits, last, (size_t)vocab * sizeof(float));
-
-   //     /* mask forbidden on the copy */
-   //     for (size_t i = 0; i < NUM_FORBIDDEN; ++i)
-   //         if (FORBIDDEN_IDS[i] < vocab)
-   //             step_logits[FORBIDDEN_IDS[i]] = -INFINITY;
-
-   //     /* argmax on the copy */
-   //     int next_id = 0;
-   //     float best = step_logits[0];
-   //     for (int64_t i = 1; i < vocab; ++i)
-   //         if (step_logits[i] > best) { best = step_logits[i]; next_id = (int)i; }
-
-   //     free(step_logits);
-
-   //     // ---- STEP 3a ----
-   //     plugin_log("free gen %d: next_id = %d  (seq=%lld vocab=%lld)", gen, next_id, (long long)seq, (long long)vocab);
-   //     // ---- end STEP 3a ----
-
-   //     if (next_id == EOS_ID) break;
-
-   //     out_tokens[(*n_out_tokens)++] = next_id;
-
-
-
-   //     /* If the model just jumped past the end of the 5 s window,
-   //every later note would be ignored by the tracker anyway.
-   //Stop so we don’t waste decoder steps. */
-   //     if (next_id >= SHIFT_BASE && next_id < PITCH_BASE) {
-   //         int frames = next_id - SHIFT_BASE;
-   //         if (frames > 520)          // 5.2 seconds
-   //             break;
-   //     }
-
-
-
-
-   //     /* step with next_id */
-   //     int64_t tok_data[1] = { next_id };
-   //     int64_t tok_shape[2] = { 1, 1 };
-   //     OrtValue* tok_val = create_tensor_int64(tok_data, tok_shape, 2);
-
-   //     int64_t pos_data[1] = { position };
-   //     int64_t pos_shape[1] = { 1 };
-   //     OrtValue* pos_val = create_tensor_int64(pos_data, pos_shape, 1);
-
-   //     const char* step_in_names[2 + NUM_KV];
-   //     step_in_names[0] = "token";
-   //     step_in_names[1] = "position";
-   //     char kbuf[LAYERS][16], vbuf[LAYERS][16];
-   //     for (int i = 0; i < LAYERS; ++i) {
-   //         snprintf(kbuf[i], sizeof(kbuf[i]), "k%d", i);
-   //         snprintf(vbuf[i], sizeof(vbuf[i]), "v%d", i);
-   //         step_in_names[2 + i] = kbuf[i];
-   //         step_in_names[2 + LAYERS + i] = vbuf[i];
-   //     }
-
-   //     const OrtValue* step_ins[2 + NUM_KV];
-   //     step_ins[0] = tok_val;
-   //     step_ins[1] = pos_val;
-   //     for (int i = 0; i < NUM_KV; ++i) step_ins[2 + i] = past[i];
-
-   //     OrtValue* step_outs[1 + NUM_KV] = { 0 };
-
-   //     const char* step_out_names[1 + NUM_KV] = {
-   //         "logits",
-   //         "new_k0","new_k1","new_k2","new_k3","new_k4","new_k5","new_k6","new_k7",
-   //         "new_k8","new_k9","new_k10","new_k11","new_k12","new_k13",
-   //         "new_v0","new_v1","new_v2","new_v3","new_v4","new_v5","new_v6","new_v7",
-   //         "new_v8","new_v9","new_v10","new_v11","new_v12","new_v13"
-   //     };
-
-   //     plugin_log("ABOUT TO CALL step Run (position=%lld, next_id=%d)", (long long)position, next_id);
-   //     check_status(g_ort->Run(sess_step, NULL,
-   //         step_in_names, step_ins, 2 + NUM_KV,
-   //         step_out_names, 1 + NUM_KV, step_outs), "step run");
-
-   //     // ---- STEP 3b ----
-   //     plugin_log("step Run succeeded, new position will be %lld", (long long)(position + 1));
-   //     // ---- end STEP 3b ----
-
-   //     g_ort->ReleaseValue(tok_val);
-   //     g_ort->ReleaseValue(pos_val);
-   //     g_ort->ReleaseValue(prefill_outs[0]);
-   //     for (int i = 0; i < NUM_KV; ++i) g_ort->ReleaseValue(past[i]);
-
-   //     prefill_outs[0] = step_outs[0];
-   //     for (int i = 0; i < NUM_KV; ++i) past[i] = step_outs[1 + i];
-   //     check_status(g_ort->GetTensorMutableData(prefill_outs[0], (void**)&logits_data), "logits");
-   //     position += 1;
-   // }
-
-
-
-
     /* free generation – stop early once we have the unique pitches */
     const int max_tokens_this_chunk = 100;   // hard safety ceiling
 
@@ -961,7 +843,7 @@ void ppd_load_models(void)
  * file-based (ppd_run_test) and buffer-based (ppd_run_test_buffer) entry
  * points so the two paths stay byte-for-byte identical downstream of the
  * mono/16k conversion. */
-static void run_transcription_pipeline(const float* wav, int64_t n_samples)
+static void run_transcription_pipeline(const float* wav, int64_t n_samples, C_PitchResult* out_pitches) 
 {
     plugin_log("Audio loaded: %lld samples @ 16 kHz", (long long)n_samples);
 
@@ -1059,38 +941,55 @@ static void run_transcription_pipeline(const float* wav, int64_t n_samples)
                 collector.notes[j] = tmp;
             }
 
-    plugin_log("=== %d notes ===", collector.n_notes);
+
+    /*plugin_log("=== %d notes ===", collector.n_notes);
     for (int i = 0; i < collector.n_notes; ++i) {
         CollectedNote* n = &collector.notes[i];
         plugin_log("  [%d] pitch=%d  program=%d  start=%.3f  end=%.3f",
             i, n->pitch, n->program, n->start, n->end);
+    }*/
+
+
+    /* Collect every pitch token that appeared, ignore everything else */
+    int seen[128] = { 0 };          /* MIDI note 0-127 */
+    int pitches[128];
+    int n_pitches = 0;
+
+    for (int i = 0; i < collector.n_notes; ++i) {
+        int p = collector.notes[i].pitch;
+        if (p >= 0 && p < 128 && !seen[p]) {
+            seen[p] = 1;
+            pitches[n_pitches++] = p;
+        }
     }
 
-    ///* Collect every pitch token that appeared, ignore everything else */
-    //int seen[128] = { 0 };          /* MIDI note 0-127 */
-    //int pitches[128];
-    //int n_pitches = 0;
+    /* Also scan the raw token buffer of the last chunk in case the collector stayed empty */
+    /* (simple extra safety – not perfect across all chunks but good enough for now) */
 
-    //for (int i = 0; i < collector.n_notes; ++i) {
-    //    int p = collector.notes[i].pitch;
-    //    if (p >= 0 && p < 128 && !seen[p]) {
-    //        seen[p] = 1;
-    //        pitches[n_pitches++] = p;
-    //    }
-    //}
+    /*plugin_log("=== %d unique pitches ===", n_pitches);
+    for (int i = 0; i < n_pitches; ++i)
+        plugin_log("  %d", pitches[i]);*/
 
-    ///* Also scan the raw token buffer of the last chunk in case the collector stayed empty */
-    ///* (simple extra safety – not perfect across all chunks but good enough for now) */
+    plugin_log("=== %d unique pitches ===", n_pitches);
+    for (int i = 0; i < n_pitches; ++i)
+        plugin_log("  %d", pitches[i]);
 
-    //plugin_log("=== %d unique pitches ===", n_pitches);
-    //for (int i = 0; i < n_pitches; ++i)
-    //    plugin_log("  %d", pitches[i]);
-
-
+    if (out_pitches) {
+        int count = n_pitches;
+        if (count > 128) count = 128;
+        for (int i = 0; i < count; ++i)
+            out_pitches->pitches[i] = pitches[i];
+        out_pitches->num_pitches = count;
+    }
 }
 
-void ppd_run_test_buffer(const C_FloatArray* audio)
+
+
+
+void ppd_run_test_buffer(const C_FloatArray* audio, C_PitchResult* out_pitches)
 {
+    if (out_pitches) out_pitches->num_pitches = 0;
+
     if (!g_sess_prefill || !g_sess_step) {
         plugin_log("Models not loaded – call ppd_load_models() first");
         return;
@@ -1110,7 +1009,7 @@ void ppd_run_test_buffer(const C_FloatArray* audio)
         return;
     }
 
-    run_transcription_pipeline(wav, n_samples);
+    run_transcription_pipeline(wav, n_samples, out_pitches);
     free(wav);
 
     plugin_log("=== PPD transcription done ===");

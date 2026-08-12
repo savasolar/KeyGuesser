@@ -81,6 +81,14 @@ private:
 
     void timerCallback() override;
 
+    // Converts a MIDI note number (0-127) to a "name + octave" string,
+    // e.g. 61 -> "C#4". Middle C (60) is C4, matching standard MIDI convention.
+    static juce::String midiNoteToName(int midiNote);
+
+    // Last set of notes actually pushed into detectedNotesLabel, so the
+    // timer callback only touches the label when something has changed.
+    std::vector<int> lastDisplayedNotes;
+
     juce::Label keyTitleLabel;
     juce::Label keyLabel;
     juce::Label detectedNotesTitleLabel;

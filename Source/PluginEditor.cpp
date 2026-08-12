@@ -61,5 +61,40 @@ void PPDAudioProcessorEditor::resized()
 
 void PPDAudioProcessorEditor::timerCallback()
 {
+    const auto notes = audioProcessor.getDetectedNotes();
 
+    if (notes == lastDisplayedNotes)
+        return;
+
+    lastDisplayedNotes = notes;
+
+    if (notes.empty())
+    {
+        detectedNotesLabel.setText("--", juce::dontSendNotification);
+        return;
+    }
+
+    juce::String text;
+    for (size_t i = 0; i < notes.size(); ++i)
+    {
+        if (i > 0)
+            text << "   "; // three spaces between note names
+        text << midiNoteToName(notes[i]);
+    }
+
+    detectedNotesLabel.setText(text, juce::dontSendNotification);
+}
+
+juce::String PPDAudioProcessorEditor::midiNoteToName(int midiNote)
+{
+    static const char* const names[12] =
+    {
+        "C", "C#", "D", "D#", "E", "F",
+        "F#", "G", "G#", "A", "A#", "B"
+    };
+
+    const int octave = midiNote / 12 - 1;
+    const int index = ((midiNote % 12) + 12) % 12; // defensive against negative input
+
+    return juce::String(names[index]) + juce::String(octave);
 }

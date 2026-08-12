@@ -234,7 +234,24 @@ void PPDAudioProcessor::transcribeAudioBuffer(const juce::AudioBuffer<float>& bu
     audio.num_channels = numChannels;
     audio.sample_rate = (int)sampleRate;
 
-    ppd_run_test_buffer(&audio);
+    C_PitchResult pitchResult;
+    pitchResult.num_pitches = 0;
+    ppd_run_test_buffer(&audio, &pitchResult);
+
+    // Only overwrite detectedNotes when this transcription actually found
+    // something - an empty result just means "nothing new", so keep
+    // showing the last known notes rather than blanking the UI.
+    if (pitchResult.num_pitches > 0)
+    {
+        const juce::ScopedLock sl(detectedNotesLock);
+        detectedNotes.assign(pitchResult.pitches, pitchResult.pitches + pitchResult.num_pitches);
+    }
+}
+
+std::vector<int> PPDAudioProcessor::getDetectedNotes() const
+{
+    const juce::ScopedLock sl(detectedNotesLock);
+    return detectedNotes;
 }
 
 void PPDAudioProcessor::runTestTranscription()

@@ -19,10 +19,20 @@ extern "C" {
 	/** Load prefill + step models. Call once when the plugin starts. */
 	void ppd_load_models(void);
 
+	/** Unique MIDI pitches (0-127) detected in the most recent transcription,
+	 *  in ascending order. Caller owns the storage - stack-allocate one of
+	 *  these and pass its address into ppd_run_test_buffer(). */
+	typedef struct {
+		int pitches[128];   /* unique MIDI note numbers */
+		int num_pitches;    /* number of valid entries in `pitches` */
+	} C_PitchResult;
+
 	/** Run transcription on caller-supplied audio (e.g. decoded from
 	 *  BinaryData in the plugin), reusing the exact same downmix/resample/
-	 *  inference pipeline as ppd_run_test(). Safe to call after ppd_load_models(). */
-	void ppd_run_test_buffer(const C_FloatArray* audio);
+	 *  inference pipeline as ppd_run_test(). Safe to call after ppd_load_models().
+	 *  If out_pitches is non-NULL it is filled with the unique MIDI pitches
+	 *  detected (num_pitches is set to 0 if none were found). */
+	void ppd_run_test_buffer(const C_FloatArray* audio, C_PitchResult* out_pitches);
 
 	/** Optional: release sessions / env. Call from processor destructor if you want. */
 	void ppd_shutdown(void);
