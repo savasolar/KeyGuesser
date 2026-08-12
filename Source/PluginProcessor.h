@@ -40,8 +40,9 @@ public:
     std::vector<int> getDetectedNotes() const;
 
     /** Thread-safe top-3 key estimates (name + score) produced by the
-     *  Spiral Array / CEG model from the same notes. Higher score = closer
-     *  = more likely. Empty when no notes have been detected yet. */
+     *  Krumhansl-Schmuckler key-profile correlation from the same notes.
+     *  Score is a Pearson correlation coefficient (range -1..1); higher =
+     *  more likely. Empty when no notes have been detected yet. */
     std::vector<std::pair<juce::String, double>> getEstimatedKeys() const;
 
     juce::AudioProcessorValueTreeState apvts;

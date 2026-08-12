@@ -11,7 +11,7 @@ PPDAudioProcessorEditor::PPDAudioProcessorEditor(PPDAudioProcessor& p)
     addAndMakeVisible(keyTitleLabel);
 
     keyLabel.setText("--", juce::dontSendNotification);
-    keyLabel.setFont(juce::Font("Arial", 14.0f, juce::Font::bold));
+    keyLabel.setFont(juce::Font("Arial", 18.0f, juce::Font::bold));
     addAndMakeVisible(keyLabel);
 
     detectedNotesTitleLabel.setText("DETECTED NOTES:", juce::dontSendNotification);
@@ -19,7 +19,7 @@ PPDAudioProcessorEditor::PPDAudioProcessorEditor(PPDAudioProcessor& p)
     addAndMakeVisible(detectedNotesTitleLabel);
 
     detectedNotesLabel.setText("--", juce::dontSendNotification);
-    detectedNotesLabel.setFont(juce::Font("Arial", 14.0f, juce::Font::bold));
+    detectedNotesLabel.setFont(juce::Font("Arial", 18.0f, juce::Font::bold));
     addAndMakeVisible(detectedNotesLabel);
 
     contextLengthTitleLabel.setText("CONTEXT LENGTH:", juce::dontSendNotification);

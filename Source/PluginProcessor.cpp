@@ -6,129 +6,90 @@
 #include <array>
 #include <cmath>
 #include <algorithm>
+#include <numeric>
 
 namespace
 {
-    using Vec3 = std::array<double, 3>;
-
-    constexpr double R = 1.0;
-    const double H = std::sqrt(2.0 / 15.0);
-
-    constexpr std::array<double, 3> W_MAJOR = { 0.516, 0.315, 0.168 };
-    constexpr std::array<double, 3> W_MINOR = { 0.516, 0.315, 0.168 };
-    constexpr std::array<double, 3> OMEGA = { 0.516, 0.315, 0.168 };
-    constexpr std::array<double, 3> NU = { 0.516, 0.315, 0.168 };
-    constexpr double ALPHA = 1.0;
-    constexpr double BETA = 0.0;
-
     constexpr const char* NOTE_NAMES[12] = {
         "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
     };
 
-    // Pitch-class → index on the line of fifths (C=0 … F=−1)
-    constexpr int PC_TO_K[12] = {
-        0,  // C
-        7,  // C#
-        2,  // D
-        9,  // D#
-        4,  // E
-       -1,  // F
-        6,  // F#
-        1,  // G
-        8,  // G#
-        3,  // A
-       10,  // A#
-        5   // B
+    // Krumhansl & Kessler (1982) probe-tone profiles, as published in
+    // Krumhansl, C. L. (1990) "Cognitive Foundations of Musical Pitch",
+    // Oxford University Press, Table 2. Index 0 = tonic, index 1 = tonic + 1
+    // semitone, etc. Public, widely-republished research values (also reused
+    // as-is in music21, Essentia, miditoolbox) - see key_estimator.py.
+    constexpr std::array<double, 12> MAJOR_PROFILE = {
+        6.35, 2.23, 3.48, 2.33, 4.38, 4.09,
+        2.52, 5.19, 2.39, 3.66, 2.29, 2.88
+    };
+    constexpr std::array<double, 12> MINOR_PROFILE = {
+        6.33, 2.68, 3.52, 5.38, 2.60, 3.53,
+        2.54, 4.75, 3.98, 2.69, 3.34, 3.17
     };
 
-    constexpr double PI = 3.14159265358979323846;
-
-    Vec3 P(double k)
+    // Fold MIDI notes (any octave) into a 12-bin pitch-class histogram.
+    // Equal weight per note, matching key_estimator.py's default.
+    std::array<double, 12> notesToPitchClassHistogram(const std::vector<int>& midiNotes)
     {
-        return {
-            R * std::sin(k * PI / 2.0),
-            R * std::cos(k * PI / 2.0),
-            k * H
-        };
+        std::array<double, 12> histogram{};
+        histogram.fill(0.0);
+        for (int note : midiNotes)
+        {
+            const int pc = ((note % 12) + 12) % 12;
+            histogram[(size_t)pc] += 1.0;
+        }
+        return histogram;
     }
 
-    Vec3 scale(const Vec3& v, double s)
+    // Pearson correlation between the observed histogram and `profile`
+    // rotated so its tonic sits at pitch class `tonic` (mirrors
+    // np.roll(profile, tonic) + np.corrcoef in key_estimator.py).
+    double correlate(const std::array<double, 12>& histogram, int tonic,
+        const std::array<double, 12>& profile)
     {
-        return { v[0] * s, v[1] * s, v[2] * s };
+        std::array<double, 12> rotated{};
+        for (int i = 0; i < 12; ++i)
+            rotated[(size_t)((tonic + i) % 12)] = profile[(size_t)i];
+
+        const double histMean = std::accumulate(histogram.begin(), histogram.end(), 0.0) / 12.0;
+        const double profMean = std::accumulate(rotated.begin(), rotated.end(), 0.0) / 12.0;
+
+        double num = 0.0, histSS = 0.0, profSS = 0.0;
+        for (int i = 0; i < 12; ++i)
+        {
+            const double hd = histogram[(size_t)i] - histMean;
+            const double pd = rotated[(size_t)i] - profMean;
+            num += hd * pd;
+            histSS += hd * hd;
+            profSS += pd * pd;
+        }
+
+        if (histSS == 0.0 || profSS == 0.0)
+            return 0.0;
+
+        return num / std::sqrt(histSS * profSS);
     }
 
-    Vec3 add(const Vec3& a, const Vec3& b)
-    {
-        return { a[0] + b[0], a[1] + b[1], a[2] + b[2] };
-    }
-
-    Vec3 CM(int k)   // major chord CE
-    {
-        return add(add(scale(P(k), W_MAJOR[0]),
-            scale(P(k + 1), W_MAJOR[1])),
-            scale(P(k + 4), W_MAJOR[2]));
-    }
-
-    Vec3 Cm(int k)   // minor chord CE
-    {
-        return add(add(scale(P(k), W_MINOR[0]),
-            scale(P(k + 1), W_MINOR[1])),
-            scale(P(k - 3), W_MINOR[2]));
-    }
-
-    Vec3 TM(int k)   // major key
-    {
-        return add(add(scale(CM(k), OMEGA[0]),
-            scale(CM(k + 1), OMEGA[1])),
-            scale(CM(k - 1), OMEGA[2]));
-    }
-
-    Vec3 Tm(int k)   // minor key (ALPHA/BETA mixture)
-    {
-        const Vec3 V = add(scale(CM(k + 1), ALPHA),
-            scale(Cm(k + 1), 1.0 - ALPHA));
-        const Vec3 iv = add(scale(Cm(k - 1), BETA),
-            scale(CM(k - 1), 1.0 - BETA));
-        return add(add(scale(Cm(k), NU[0]),
-            scale(V, NU[1])),
-            scale(iv, NU[2]));
-    }
-
-    double dist(const Vec3& a, const Vec3& b)
-    {
-        const double dx = a[0] - b[0];
-        const double dy = a[1] - b[1];
-        const double dz = a[2] - b[2];
-        return std::sqrt(dx * dx + dy * dy + dz * dz);
-    }
-
-    // Exact replica of spiral_array.estimate_key
+    // Exact replica of key_estimator.py's estimate_key() (Krumhansl-Schmuckler)
     std::vector<std::pair<juce::String, double>>
         estimateKey(const std::vector<int>& midiNotes, int topN = 3)
     {
         if (midiNotes.empty())
             return {};
 
-        // Centre of effect (equal weight per note)
-        Vec3 ce{ 0.0, 0.0, 0.0 };
-        for (int note : midiNotes)
-        {
-            const int pc = ((note % 12) + 12) % 12;
-            ce = add(ce, P(PC_TO_K[pc]));
-        }
-        ce = scale(ce, 1.0 / static_cast<double>(midiNotes.size()));
+        const auto histogram = notesToPitchClassHistogram(midiNotes);
 
         std::vector<std::pair<juce::String, double>> scores;
         scores.reserve(24);
 
         for (int tonic = 0; tonic < 12; ++tonic)
         {
-            const int k = PC_TO_K[tonic];
             const juce::String majName = juce::String(NOTE_NAMES[tonic]) + "maj";
             const juce::String minName = juce::String(NOTE_NAMES[tonic]) + "min";
 
-            scores.emplace_back(majName, -dist(ce, TM(k)));
-            scores.emplace_back(minName, -dist(ce, Tm(k)));
+            scores.emplace_back(majName, correlate(histogram, tonic, MAJOR_PROFILE));
+            scores.emplace_back(minName, correlate(histogram, tonic, MINOR_PROFILE));
         }
 
         std::sort(scores.begin(), scores.end(),
