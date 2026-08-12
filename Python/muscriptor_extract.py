@@ -21,8 +21,7 @@ It writes ./onnx_resources/:
     extract_log.txt     - what succeeded / failed, so we know exactly what's
                           still missing before we build the standalone version
 
-Send all three files back and I'll build the fully-independent test + a
-concrete C/C++ porting checklist from what's actually in them.
+Plus resources_clean.json in the current directory (the cleaned subset).
 """
 import inspect
 import json
@@ -155,9 +154,20 @@ try_source("model._instrument_for_program", model._instrument_for_program)
 (OUT / "source_dump.txt").write_text("\n\n".join(source_chunks))
 (OUT / "extract_log.txt").write_text("\n".join(log))
 
+# ---- also write the cleaned subset that the rest of the code expects ----
+clean = {
+    "config": resources["config"],
+    "vocab": resources["vocab"],
+    "instrument_group_ids": resources["instrument_group_ids"],
+    "dataset_name_none_id": resources["dataset_name_none_id"],
+    "forbidden_ids_no_drums": resources["forbidden_ids_no_drums"],
+}
+Path("resources_clean.json").write_text(json.dumps(clean, indent=2))
+
 print(f"\nDone. Wrote:")
 print(f"  {OUT / 'resources.json'}")
 print(f"  {OUT / 'source_dump.txt'}")
 print(f"  {OUT / 'extract_log.txt'}")
+print(f"  resources_clean.json")
 print("\nSend these three files back and I'll build the standalone (zero-muscriptor,")
 print("zero-torch) test + a concrete C/C++ porting checklist from what's actually in them.")
