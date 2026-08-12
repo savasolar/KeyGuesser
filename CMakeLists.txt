@@ -1,16 +1,3 @@
-# Symbolic link for debug version (full):
-# mklink /D "C:\Program Files\Common Files\VST3\PPD.vst3" "C:\Users\savas\Documents\JUCE Projects\PPD\cmake_build\PPD_artefacts\Debug\VST3\PPD.vst3"
-
-# visual studio project preferences:
-
-# command: C:\Program Files (x86)\Image-Line\FL Studio 12\FL64.exe
-
-# Build commands:
-# cd cmake_build
-# del /s /q *
-# cmake ..
-# cmake --build . --config Debug (or --config Release)
-
 cmake_minimum_required(VERSION 3.15)
 
 if(APPLE)
@@ -46,9 +33,9 @@ if(MSVC)
     )
 endif()
 
-set(PLUGIN_CODE "PpdD")   # Original full version code
-set(PLUGIN_PRODUCT_NAME "PPD")
-set(PLUGIN_BUNDLE_ID "com.54v450l4r.PPD")
+set(PLUGIN_CODE "KeyG")
+set(PLUGIN_PRODUCT_NAME "KeyGuesser")
+set(PLUGIN_BUNDLE_ID "com.54v450l4r.KeyGuesser")
 
 # Plugin setup arguments (common)
 set(PLUGIN_ARGS
@@ -75,15 +62,14 @@ target_compile_definitions(PPD
         JUCE_DISABLE_VST2_BUILDING=1
         JUCE_PLUGINHOST_VST3=1
         JUCE_PLUGINHOST_VST=0
-#         $<$<BOOL:${DEMO_BUILD}>:DEMO_BUILD>
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_STRICT_REFCOUNTEDPOINTER=1
 )
-# Source files
 
+# Source files
 target_sources(PPD PRIVATE
     Source/PluginEditor.cpp
     Source/PluginEditor.h
@@ -101,7 +87,6 @@ set_source_files_properties(Source/core.c PROPERTIES LANGUAGE C)
 # Binary data
 juce_add_binary_data(BinaryResources SOURCES
 	${CMAKE_CURRENT_SOURCE_DIR}/Resources/resources_clean.json
-	${CMAKE_CURRENT_SOURCE_DIR}/Resources/test2.wav
 )
 
 # Additional Libraries
@@ -114,7 +99,6 @@ target_link_libraries(PPD PRIVATE ${ONNXRUNTIME_DIR}/lib/onnxruntime.lib)
 # SRC
 target_include_directories(PPD PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/libsamplerate/include")
 target_link_libraries(PPD PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/libsamplerate/build/src/Release/samplerate.lib")
-    
 
 # Link everything
 target_link_libraries(PPD PRIVATE
@@ -135,4 +119,3 @@ target_link_libraries(PPD PRIVATE
 )
 
 juce_generate_juce_header(PPD)
-

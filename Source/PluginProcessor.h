@@ -31,8 +31,6 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
-    void runTestTranscription();
-
     /** Thread-safe accessor for the UI: returns a copy of the unique MIDI
      *  pitches from the most recent NON-EMPTY transcription. Safe to call
      *  from the message thread while transcribeAudioBuffer() updates

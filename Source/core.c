@@ -70,9 +70,6 @@ static const int FORBIDDEN_IDS[] = {
 };
 #define NUM_FORBIDDEN (sizeof(FORBIDDEN_IDS)/sizeof(FORBIDDEN_IDS[0]))
 
-static const char* MODEL_DIR = "C:/Users/savas/Documents/PPD/models";
-static const char* WAV_PATH = "C:/Users/savas/Documents/JUCE Projects/PPD/Resources/test2.wav";
-
 /* ------------------------------------------------------------------ */
 /* Helpers                                                            */
 /* ------------------------------------------------------------------ */

@@ -402,32 +402,6 @@ std::vector<std::pair<juce::String, double>> PPDAudioProcessor::getEstimatedKeys
     return estimatedKeys;
 }
 
-void PPDAudioProcessor::runTestTranscription()
-{
-    // 1) Load test2.wav from BinaryData (unchanged)
-    juce::AudioFormatManager formatManager;
-    formatManager.registerBasicFormats();
-
-    auto inputStream = std::make_unique<juce::MemoryInputStream>(
-        BinaryData::test2_wav, (size_t)BinaryData::test2_wavSize, false);
-
-    std::unique_ptr<juce::AudioFormatReader> reader(
-        formatManager.createReaderFor(std::move(inputStream)));
-
-    if (reader == nullptr)
-    {
-        DBG("runTestTranscription: failed to create reader for embedded test2.wav");
-        return;
-    }
-
-    juce::AudioBuffer<float> fileBuffer((int)reader->numChannels,
-        (int)reader->lengthInSamples);
-    reader->read(&fileBuffer, 0, (int)reader->lengthInSamples, 0, true, true);
-
-    // 2) Re-use the exact same interleave + core path
-    transcribeAudioBuffer(fileBuffer, reader->sampleRate);
-}
-
 juce::AudioProcessorValueTreeState::ParameterLayout PPDAudioProcessor::createParams()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
