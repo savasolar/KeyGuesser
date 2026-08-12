@@ -21,9 +21,6 @@ project(PPD VERSION 3.0.0)
 
 set(CMAKE_CXX_STANDARD 17)
 
-# Build configuration options
-# option(DEMO_BUILD "Build demo version" OFF)
-
 # JUCE path
 if(APPLE)
     set(JUCE_PATH "/Users/admin/Documents/repos/JUCE")
@@ -33,7 +30,6 @@ endif()
 
 # Include JUCE
 add_subdirectory(${JUCE_PATH} JUCE)
-# juce_set_aax_sdk_path("${JUCE_PATH}/modules/juce_audio_plugin_client/AAX/SDK")
 
 # Conditional formats
 if(APPLE)
@@ -50,25 +46,9 @@ if(MSVC)
     )
 endif()
 
-# Conditional plugin code
-# if(DEMO_BUILD)
-#     set(PLUGIN_CODE "CtnT")   # T for Trial — must be unique
-# else()
-    set(PLUGIN_CODE "PpdD")   # Original full version code
-# endif()
-
-# Conditional product name
-# if(DEMO_BUILD)
-#     set(PLUGIN_PRODUCT_NAME "CounterTune TRIAL VERSION")
-# else()
-    set(PLUGIN_PRODUCT_NAME "PPD")
-# endif()
-
-# if(DEMO_BUILD)
-#     set(PLUGIN_BUNDLE_ID "com.54v450l4r.countertune-trial")
-# else()
-    set(PLUGIN_BUNDLE_ID "com.54v450l4r.PPD")
-# endif()
+set(PLUGIN_CODE "PpdD")   # Original full version code
+set(PLUGIN_PRODUCT_NAME "PPD")
+set(PLUGIN_BUNDLE_ID "com.54v450l4r.PPD")
 
 # Plugin setup arguments (common)
 set(PLUGIN_ARGS
@@ -127,13 +107,13 @@ juce_add_binary_data(BinaryResources SOURCES
 # Additional Libraries
 
 # ONNX
-set(ONNXRUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/onnxruntime-win-x64-1.25.0-static-debug")
+set(ONNXRUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/onnxruntime-win-x64-1.25.0-static-release")
 target_include_directories(PPD PRIVATE ${ONNXRUNTIME_DIR}/include)
 target_link_libraries(PPD PRIVATE ${ONNXRUNTIME_DIR}/lib/onnxruntime.lib)
 
 # SRC
 target_include_directories(PPD PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/libsamplerate/include")
-target_link_libraries(PPD PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/libsamplerate/build/src/Debug/samplerate.lib")
+target_link_libraries(PPD PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/libsamplerate/build/src/Release/samplerate.lib")
     
 
 # Link everything
