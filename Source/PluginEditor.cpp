@@ -5,13 +5,13 @@ PPDAudioProcessorEditor::PPDAudioProcessorEditor(PPDAudioProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
 {
 
-    keyTitleLabel.setText("ESTIMATED KEY:", juce::dontSendNotification);
+    keyTitleLabel.setText("KEY ESTIMATES:", juce::dontSendNotification);
     keyTitleLabel.setFont(juce::Font("Arial", 14.0f, juce::Font::plain));
     keyTitleLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(keyTitleLabel);
 
     keyLabel.setText("--", juce::dontSendNotification);
-    keyLabel.setFont(juce::Font("Arial", 14.0f, juce::Font::plain));
+    keyLabel.setFont(juce::Font("Arial", 14.0f, juce::Font::bold));
     addAndMakeVisible(keyLabel);
 
     detectedNotesTitleLabel.setText("DETECTED NOTES:", juce::dontSendNotification);
@@ -73,18 +73,37 @@ void PPDAudioProcessorEditor::timerCallback()
     if (notes.empty())
     {
         detectedNotesLabel.setText("--", juce::dontSendNotification);
+        keyLabel.setText("--", juce::dontSendNotification);
         return;
     }
 
+    // Detected notes
     juce::String text;
     for (size_t i = 0; i < notes.size(); ++i)
     {
         if (i > 0)
-            text << "   "; // three spaces between note names
+            text << "   ";
         text << midiNoteToName(notes[i]);
     }
-
     detectedNotesLabel.setText(text, juce::dontSendNotification);
+
+    // Top-3 Spiral Array keys (name + score)
+    const auto keys = audioProcessor.getEstimatedKeys();
+    juce::String keyText;
+    /*for (size_t i = 0; i < keys.size(); ++i)
+    {
+        if (i > 0)
+            keyText << "   ";
+        keyText << keys[i].first
+            << " (" << juce::String(keys[i].second, 3) << ")";
+    }*/
+    for (size_t i = 0; i < keys.size(); ++i)
+    {
+        if (i > 0)
+            keyText << "   ";
+        keyText << (int)(i + 1) << ". " << keys[i].first;
+    }
+    keyLabel.setText(keyText, juce::dontSendNotification);
 }
 
 juce::String PPDAudioProcessorEditor::midiNoteToName(int midiNote)

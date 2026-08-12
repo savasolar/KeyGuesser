@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include "core.h"
+#include <utility>
 
 class PPDAudioProcessor  : public juce::AudioProcessor
 {
@@ -38,6 +39,11 @@ public:
      *  detectedNotes on a background thread. */
     std::vector<int> getDetectedNotes() const;
 
+    /** Thread-safe top-3 key estimates (name + score) produced by the
+     *  Spiral Array / CEG model from the same notes. Higher score = closer
+     *  = more likely. Empty when no notes have been detected yet. */
+    std::vector<std::pair<juce::String, double>> getEstimatedKeys() const;
+
     juce::AudioProcessorValueTreeState apvts;
 
     int getContextLengthSeconds() const
@@ -58,6 +64,7 @@ private:
     std::atomic<bool> isTranscribing{ false };
     mutable juce::CriticalSection detectedNotesLock;
     std::vector<int> detectedNotes;
+    std::vector<std::pair<juce::String, double>> estimatedKeys;
 
     juce::AudioProcessorValueTreeState::ParameterLayout createParams();
 
