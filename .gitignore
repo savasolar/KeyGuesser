@@ -13,4 +13,3 @@ CMakeUserPresets.json
 cmake_build/
 /Builds
 /Dependencies
-/Resources

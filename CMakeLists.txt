@@ -75,30 +75,39 @@ target_sources(PPD PRIVATE
     Source/PluginEditor.h
     Source/PluginProcessor.cpp
     Source/PluginProcessor.h
-	Source/core.c
+    Source/core.c
     Source/core.h
-	Source/PluginLogger.cpp
-	Source/PluginLogger.h
-	Source/dr_wav.h
+    Source/PluginLogger.cpp
+    Source/PluginLogger.h
+    Source/dr_wav.h
 )
 
 set_source_files_properties(Source/core.c PROPERTIES LANGUAGE C)
 
 # Binary data
 juce_add_binary_data(BinaryResources SOURCES
-	${CMAKE_CURRENT_SOURCE_DIR}/Resources/resources_clean.json
+    ${CMAKE_CURRENT_SOURCE_DIR}/Resources/resources_clean.json
 )
 
 # Additional Libraries
 
-# ONNX
-set(ONNXRUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/onnxruntime-win-x64-1.25.0-static-release")
-target_include_directories(PPD PRIVATE ${ONNXRUNTIME_DIR}/include)
-target_link_libraries(PPD PRIVATE ${ONNXRUNTIME_DIR}/lib/onnxruntime.lib)
-
-# SRC
-target_include_directories(PPD PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/libsamplerate/include")
-target_link_libraries(PPD PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/libsamplerate/build/src/Release/samplerate.lib")
+if (APPLE)
+    # ONNX
+    set(ONNXRUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/onnxruntime-osx-x86_64-static_lib-1.25.0")
+    target_include_directories(PPD PRIVATE ${ONNXRUNTIME_DIR}/include)
+    target_link_libraries(PPD PRIVATE ${ONNXRUNTIME_DIR}/lib/libonnxruntime.a)
+    # SRC
+    target_include_directories(PPD PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/libsamplerate/include")
+    target_link_libraries(PPD PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/libsamplerate/build/src/libsamplerate.a")
+elseif(NOT APPLE)
+    # ONNX
+    set(ONNXRUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/onnxruntime-win-x64-1.25.0-static-release")
+    target_include_directories(PPD PRIVATE ${ONNXRUNTIME_DIR}/include)
+    target_link_libraries(PPD PRIVATE ${ONNXRUNTIME_DIR}/lib/onnxruntime.lib)
+    # SRC
+    target_include_directories(PPD PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/libsamplerate/include")
+    target_link_libraries(PPD PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/libsamplerate/build/src/Release/samplerate.lib")
+endif()
 
 # Link everything
 target_link_libraries(PPD PRIVATE
