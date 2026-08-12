@@ -408,7 +408,13 @@ void PPDAudioProcessor::transcribeAudioBuffer(const juce::AudioBuffer<float>& bu
     // Only overwrite detectedNotes when this transcription actually found
     // something - an empty result just means "nothing new", so keep
     // showing the last known notes rather than blanking the UI.
-    if (pitchResult.num_pitches > 0)
+    /*if (pitchResult.num_pitches > 0)
+    {
+        const juce::ScopedLock sl(detectedNotesLock);
+        detectedNotes.assign(pitchResult.pitches, pitchResult.pitches + pitchResult.num_pitches);
+        estimatedKeys = estimateKey(detectedNotes, 3);
+    }*/
+
     {
         const juce::ScopedLock sl(detectedNotesLock);
         detectedNotes.assign(pitchResult.pitches, pitchResult.pitches + pitchResult.num_pitches);
