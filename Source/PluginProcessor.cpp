@@ -115,7 +115,14 @@ PPDAudioProcessor::PPDAudioProcessor()
     apvts(*this, nullptr, "Parameters", createParams())
 #endif
 {
-    ppd_load_models();
+    // Models live next to the plugin binary itself
+    juce::File pluginDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
+        .getParentDirectory();
+
+    juce::String prefillPath = pluginDir.getChildFile("prefill.onnx").getFullPathName();
+    juce::String stepPath = pluginDir.getChildFile("step.onnx").getFullPathName();
+
+    ppd_load_models(prefillPath.toRawUTF8(), stepPath.toRawUTF8());
 }
 
 PPDAudioProcessor::~PPDAudioProcessor()

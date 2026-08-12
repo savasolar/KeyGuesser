@@ -799,14 +799,25 @@ static OrtEnv* g_env = NULL;
 static OrtSession* g_sess_prefill = NULL;
 static OrtSession* g_sess_step = NULL;
 
-void ppd_load_models(void)
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+void ppd_load_models(const char* prefill_path_utf8, const char* step_path_utf8)
 {
     if (g_sess_prefill && g_sess_step) {
         plugin_log("Models already loaded");
         return;
     }
 
+    if (!prefill_path_utf8 || !step_path_utf8) {
+        plugin_log("ppd_load_models: null path(s)");
+        return;
+    }
+
     plugin_log("=== Loading models ===");
+    plugin_log("  prefill: %s", prefill_path_utf8);
+    plugin_log("  step:    %s", step_path_utf8);
 
     g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
     if (!g_ort) {
@@ -823,15 +834,24 @@ void ppd_load_models(void)
     g_ort->SetSessionGraphOptimizationLevel(opts, ORT_ENABLE_BASIC);
 
 #ifdef _WIN32
-    const wchar_t* prefill_path = L"C:\\Users\\savas\\Documents\\PPD\\models\\prefill.onnx";
-    const wchar_t* step_path = L"C:\\Users\\savas\\Documents\\PPD\\models\\step.onnx";
+    wchar_t prefill_w[MAX_PATH];
+    wchar_t step_w[MAX_PATH];
+
+    if (MultiByteToWideChar(CP_UTF8, 0, prefill_path_utf8, -1, prefill_w, MAX_PATH) == 0 ||
+        MultiByteToWideChar(CP_UTF8, 0, step_path_utf8, -1, step_w, MAX_PATH) == 0)
+    {
+        plugin_log("Failed to convert model paths to wide strings");
+        g_ort->ReleaseSessionOptions(opts);
+        return;
+    }
+
+    check_status(g_ort->CreateSession(g_env, prefill_w, opts, &g_sess_prefill), "prefill session");
+    check_status(g_ort->CreateSession(g_env, step_w, opts, &g_sess_step), "step session");
 #else
-    const char* prefill_path = "C:/Users/savas/Documents/PPD/models/prefill.onnx";
-    const char* step_path = "C:/Users/savas/Documents/PPD/models/step.onnx";
+    check_status(g_ort->CreateSession(g_env, prefill_path_utf8, opts, &g_sess_prefill), "prefill session");
+    check_status(g_ort->CreateSession(g_env, step_path_utf8, opts, &g_sess_step), "step session");
 #endif
 
-    check_status(g_ort->CreateSession(g_env, prefill_path, opts, &g_sess_prefill), "prefill session");
-    check_status(g_ort->CreateSession(g_env, step_path, opts, &g_sess_step), "step session");
     g_ort->ReleaseSessionOptions(opts);
 
     plugin_log("Models loaded successfully");

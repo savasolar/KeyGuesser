@@ -16,8 +16,9 @@ extern "C" {
 		int     sample_rate;
 	} C_FloatArray;
 
-	/** Load prefill + step models. Call once when the plugin starts. */
-	void ppd_load_models(void);
+	/** Load prefill + step models from the given UTF-8 paths.
+	 *  Call once when the plugin starts (paths should point next to the plugin binary). */
+	void ppd_load_models(const char* prefill_path_utf8, const char* step_path_utf8);
 
 	/** Unique MIDI pitches (0-127) detected in the most recent transcription,
 	 *  in ascending order. Caller owns the storage - stack-allocate one of
