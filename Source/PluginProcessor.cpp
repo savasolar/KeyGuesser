@@ -13,12 +13,11 @@ PPDAudioProcessor::PPDAudioProcessor()
                       #endif
                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
                      #endif
-                       )
+                       ),
+    apvts(*this, nullptr, "Parameters", createParams())
 #endif
 {
-//    run_ppd_transcription();
     ppd_load_models();
-
 }
 
 PPDAudioProcessor::~PPDAudioProcessor()
@@ -91,14 +90,23 @@ void PPDAudioProcessor::changeProgramName (int index, const juce::String& newNam
 {
 }
 
-void PPDAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+void PPDAudioProcessor::prepareToPlay(double sampleRate, int /*samplesPerBlock*/)
 {
     currentSampleRate = sampleRate;
-    contextSamples = (int)(contextLengthSeconds * sampleRate + 0.5);
 
+    constexpr int maxSeconds = 10;
+    const int maxSamples = (int)(maxSeconds * sampleRate + 0.5);
     const int numCh = juce::jmax(1, getTotalNumInputChannels());
-    contextBuffer.setSize(numCh, contextSamples, false, true, true); // clear, avoid realloc
+
+    // Allocate once for the largest possible context. Never touch setSize again on the audio thread.
+    contextBuffer.setSize(numCh, maxSamples, false, true, true);
+
+    contextSamples = (int)(getContextLengthSeconds() * sampleRate + 0.5);
+    if (contextSamples > maxSamples)
+        contextSamples = maxSamples;
+
     writePosition = 0;
+    samplesSinceLast = 0;
 }
 
 void PPDAudioProcessor::releaseResources()
@@ -128,7 +136,7 @@ bool PPDAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) cons
 }
 #endif
 
-void PPDAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void PPDAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& /*midiMessages*/)
 {
     juce::ScopedNoDenormals noDenormals;
     auto totalNumInputChannels = getTotalNumInputChannels();
@@ -137,18 +145,38 @@ void PPDAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear(i, 0, buffer.getNumSamples());
 
-    if (contextSamples <= 0 || contextBuffer.getNumSamples() != contextSamples)
+    // CHANGED: buffer is now always max-size, so test against the logical length
+    if (contextSamples <= 0 || contextBuffer.getNumSamples() < contextSamples)
         return;
+
+    // ------------------------------------------------------------------
+    // SAFE PARAMETER UPDATE (only when not mid-transcription)
+    // ------------------------------------------------------------------
+    {
+        const int desired = (int)(getContextLengthSeconds() * currentSampleRate + 0.5);
+
+        if (desired != contextSamples
+            && desired > 0
+            && desired <= contextBuffer.getNumSamples()
+            && !isTranscribing.load(std::memory_order_acquire))
+        {
+            contextSamples = desired;
+            if (writePosition >= contextSamples)
+                writePosition = 0;
+            samplesSinceLast = 0;          // start a clean full window
+        }
+    }
+    // ------------------------------------------------------------------
 
     const int numSamples = buffer.getNumSamples();
     const int numCh = juce::jmin(totalNumInputChannels, contextBuffer.getNumChannels());
 
-    // 1. Write live audio into the ring buffer
+    // 1. Write live audio into the ring buffer (still uses the *logical* contextSamples)
     for (int ch = 0; ch < numCh; ++ch)
     {
         const float* src = buffer.getReadPointer(ch);
         float* dest = contextBuffer.getWritePointer(ch);
-        int          pos = writePosition;
+        int pos = writePosition;
 
         for (int i = 0; i < numSamples; ++i)
         {
@@ -163,16 +191,14 @@ void PPDAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     samplesSinceLast += numSamples;
     if (samplesSinceLast >= contextSamples)
     {
-        samplesSinceLast -= contextSamples;   // keep residual for accuracy
+        samplesSinceLast -= contextSamples;
 
-        // Never block the audio thread. Launch once, skip if already running.
         if (!isTranscribing.exchange(true))
         {
-            // --- snapshot on the audio thread (no race) ---
             juce::AudioBuffer<float> snapshot(contextBuffer.getNumChannels(), contextSamples);
-            const int numCh = contextBuffer.getNumChannels();
+            const int nCh = contextBuffer.getNumChannels();
 
-            for (int ch = 0; ch < numCh; ++ch)
+            for (int ch = 0; ch < nCh; ++ch)
             {
                 const float* src = contextBuffer.getReadPointer(ch);
                 float* dest = snapshot.getWritePointer(ch);
@@ -184,7 +210,7 @@ void PPDAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
                     juce::FloatVectorOperations::copy(dest + first, src, writePosition);
             }
 
-            const double sr = currentSampleRate;   // capture by value
+            const double sr = currentSampleRate;
 
             juce::Thread::launch([this, snapshot = std::move(snapshot), sr]
                 {
@@ -205,14 +231,18 @@ juce::AudioProcessorEditor* PPDAudioProcessor::createEditor()
     return new PPDAudioProcessorEditor (*this);
 }
 
-void PPDAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+void PPDAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
-
+    auto state = apvts.copyState();
+    std::unique_ptr<juce::XmlElement> xml(state.createXml());
+    copyXmlToBinary(*xml, destData);
 }
 
-void PPDAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+void PPDAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
-
+    std::unique_ptr<juce::XmlElement> xml(getXmlFromBinary(data, sizeInBytes));
+    if (xml != nullptr && xml->hasTagName(apvts.state.getType()))
+        apvts.replaceState(juce::ValueTree::fromXml(*xml));
 }
 
 void PPDAudioProcessor::transcribeAudioBuffer(const juce::AudioBuffer<float>& buffer, double sampleRate)
@@ -278,6 +308,13 @@ void PPDAudioProcessor::runTestTranscription()
 
     // 2) Re-use the exact same interleave + core path
     transcribeAudioBuffer(fileBuffer, reader->sampleRate);
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout PPDAudioProcessor::createParams()
+{
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+    params.push_back(std::make_unique<juce::AudioParameterInt>("ContextLength", "Context Length", 2, 10, 5));
+    return { params.begin(), params.end() };
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

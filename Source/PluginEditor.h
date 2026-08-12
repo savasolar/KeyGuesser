@@ -96,6 +96,7 @@ private:
     juce::Label contextLengthTitleLabel;
 
     juce::Slider secondsSlider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> secondsAttachment;
 
     SliderFontLookAndFeel sliderFontLookAndFeel;
 

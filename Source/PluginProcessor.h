@@ -38,27 +38,29 @@ public:
      *  detectedNotes on a background thread. */
     std::vector<int> getDetectedNotes() const;
 
+    juce::AudioProcessorValueTreeState apvts;
+
+    int getContextLengthSeconds() const
+    {
+        return juce::jlimit(2, 10, (int)*apvts.getRawParameterValue("ContextLength"));
+    }
+
 private:
 
-    int contextLengthSeconds = 5;
+//    int contextLengthSeconds = 5;
 
     double currentSampleRate = 44100.0;
     juce::AudioBuffer<float> contextBuffer;
     int writePosition = 0;
     int contextSamples = 0;
-
     int samplesSinceLast = 0;
 
     std::atomic<bool> isTranscribing{ false };
-
-    // Guards detectedNotes, which is written on the background transcription
-    // thread (see transcribeAudioBuffer) and read on the message thread
-    // (see getDetectedNotes, called from PluginEditor's timer).
     mutable juce::CriticalSection detectedNotesLock;
     std::vector<int> detectedNotes;
 
-    /** Shared path used by both the BinaryData test and the live context buffer.
-     *  Interleaves the (planar) AudioBuffer and calls ppd_run_test_buffer. */
+    juce::AudioProcessorValueTreeState::ParameterLayout createParams();
+
     void transcribeAudioBuffer(const juce::AudioBuffer<float>& buffer, double sampleRate);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PPDAudioProcessor)

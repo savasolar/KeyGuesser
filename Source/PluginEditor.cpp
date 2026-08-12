@@ -11,7 +11,7 @@ PPDAudioProcessorEditor::PPDAudioProcessorEditor(PPDAudioProcessor& p)
     addAndMakeVisible(keyTitleLabel);
 
     keyLabel.setText("--", juce::dontSendNotification);
-    keyLabel.setFont(juce::Font("Arial", 32.0f, juce::Font::bold));
+    keyLabel.setFont(juce::Font("Arial", 14.0f, juce::Font::plain));
     addAndMakeVisible(keyLabel);
 
     detectedNotesTitleLabel.setText("DETECTED NOTES:", juce::dontSendNotification);
@@ -28,11 +28,13 @@ PPDAudioProcessorEditor::PPDAudioProcessorEditor(PPDAudioProcessor& p)
 
     secondsSlider.setSliderStyle(juce::Slider::IncDecButtons);
     secondsSlider.setRange(2.0, 10.0, 1.0);
-    secondsSlider.setValue(2.0);
+//    secondsSlider.setValue(2.0);
     secondsSlider.setTextValueSuffix(" sec");
     secondsSlider.setTextBoxStyle(juce::Slider::TextEntryBoxPosition::TextBoxLeft, true, 50, 40);
     secondsSlider.setLookAndFeel(&sliderFontLookAndFeel);
     addAndMakeVisible(secondsSlider);
+    secondsAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        audioProcessor.apvts, "ContextLength", secondsSlider);
 
     setSize(280, 280);
 
