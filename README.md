@@ -1,5 +1,7 @@
 # KeyGuesser
 
+Highly accurate pitch and key detector designed to work with any audio. Runs as VST3/AU audio effect plugin for Windows and MacOS.
+
 ## Build Process
 
 ### 1. Generate model files
