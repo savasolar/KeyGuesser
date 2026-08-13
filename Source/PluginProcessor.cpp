@@ -7,6 +7,7 @@
 #include <cmath>
 #include <algorithm>
 #include <numeric>
+#include <thread>
 
 namespace
 {
@@ -317,11 +318,11 @@ void PPDAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
 
             const double sr = currentSampleRate;
 
-            juce::Thread::launch([this, snapshot = std::move(snapshot), sr]
+            std::thread([this, snapshot = std::move(snapshot), sr]() mutable
                 {
                     transcribeAudioBuffer(snapshot, sr);
                     isTranscribing.store(false, std::memory_order_release);
-                });
+                }).detach();
         }
     }
 }
