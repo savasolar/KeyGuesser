@@ -1,16 +1,16 @@
-# MuScriptor JUCE Plugin
+# KeyGuesser
 
 ## Build Process
 
 ### 1. Generate model files
 
-1a. Download `model.safetensors` from the [MuScriptor-small repo on Hugging Face](https://huggingface.co/MuScriptor/muscriptor-small/tree/main) and place it in the same folder as the Python scripts.
-1b. Run `exporter.py`. This generates:
+1. Download `model.safetensors` from the [MuScriptor-small repo on Hugging Face](https://huggingface.co/MuScriptor/muscriptor-small/tree/main) and place it in the same folder as the Python scripts.
+2. Run `exporter.py`. This generates:
    - `prefill.onnx`
    - `prefill.onnx.data`
    - `step.onnx`
    - `step.onnx.data`
-1c. These files will be moved into the correct directory once the plugin binary is compiled in step 3.
+3. These files will be moved into the correct directory once the plugin binary is compiled in step 3.
 
 ### 2. Add dependencies
 
