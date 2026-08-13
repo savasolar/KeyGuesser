@@ -116,12 +116,26 @@ PPDAudioProcessor::PPDAudioProcessor()
     apvts(*this, nullptr, "Parameters", createParams())
 #endif
 {
-    // Models live next to the plugin binary itself
-    juce::File pluginDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
-        .getParentDirectory();
+    // Resolve the directory that contains the ONNX models.
+    // macOS: must be Contents/Resources/ (required for correct code-signing / notarization)
+    // Windows/Linux: next to the executable (normal VST3 layout)
+    juce::File modelDir;
 
-    juce::String prefillPath = pluginDir.getChildFile("prefill.onnx").getFullPathName();
-    juce::String stepPath = pluginDir.getChildFile("step.onnx").getFullPathName();
+#if JUCE_MAC
+    // currentExecutableFile → .../Contents/MacOS/YourPlugin
+    // go up to Contents/, then into Resources/
+    modelDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
+                   .getParentDirectory()   // MacOS
+                   .getParentDirectory()   // Contents
+                   .getChildFile("Resources");
+#else
+    // Windows / Linux – models live next to the binary
+    modelDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
+                   .getParentDirectory();
+#endif
+
+    juce::String prefillPath = modelDir.getChildFile("prefill.onnx").getFullPathName();
+    juce::String stepPath   = modelDir.getChildFile("step.onnx").getFullPathName();
 
     ppd_load_models(prefillPath.toRawUTF8(), stepPath.toRawUTF8());
 }
