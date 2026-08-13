@@ -13,3 +13,4 @@ CMakeUserPresets.json
 cmake_build/
 /Builds
 /Dependencies
+/Packaging
